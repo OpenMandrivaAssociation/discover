@@ -1,0 +1,20 @@
+diff -urN muon-5.3.0/libmuon/CMakeLists.txt muon-5.3.0-patched/libmuon/CMakeLists.txt
+--- muon-5.3.0/libmuon/CMakeLists.txt	2015-04-23 20:08:56.000000000 +1000
++++ muon-5.3.0-patched/libmuon/CMakeLists.txt	2015-05-06 19:45:18.384392313 +1000
+@@ -38,6 +38,7 @@
+ 
+ kconfig_add_kcfg_files(muon_LIB_SRCS GENERATE_MOC MuonDataSources.kcfgc)
+ add_library(MuonCommon ${muon_LIB_SRCS})
++set_target_properties(MuonCommon PROPERTIES VERSION ${PROJECT_VERSION} SOVERSION ${PROJECT_VERSION_MAJOR})
+ 
+ target_link_libraries(MuonCommon
+ LINK_PUBLIC
+diff -urN muon-5.3.0/libmuon/notifiers/CMakeLists.txt muon-5.3.0-patched/libmuon/notifiers/CMakeLists.txt
+--- muon-5.3.0/libmuon/notifiers/CMakeLists.txt	2015-04-23 20:08:56.000000000 +1000
++++ muon-5.3.0-patched/libmuon/notifiers/CMakeLists.txt	2015-05-06 19:46:15.188394898 +1000
+@@ -1,4 +1,5 @@
+ add_library(MuonNotifiers BackendNotifierModule.cpp)
++set_target_properties(MuonNotifiers PROPERTIES VERSION ${PROJECT_VERSION} SOVERSION ${PROJECT_VERSION_MAJOR})
+ target_link_libraries(MuonNotifiers
+     PUBLIC
+         Qt5::Core
