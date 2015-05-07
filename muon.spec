@@ -7,31 +7,31 @@ Release:	1
 License:	GPLv2+
 Group:		Graphical desktop/KDE
 Url:		https://www.kde.org/
-Source0:	ftp://ftp.kde.org/pub/kde/stable/plasma/%{version}/%{name}-%{version}.tar.xz
+Source0:	http://download.kde.org/stable/plasma/%{version}/%{name}-%{version}.tar.xz
 Patch0:		muon-5.3.0-soname.patch
-BuildRequires:	extra-cmake-modules
+BuildRequires:	cmake(ECM)
 %if %{with packagekit}
 BuildRequires:	appstream-qt5-devel
 BuildRequires:	pkgconfig(packagekitqt5)
 %endif
-BuildRequires:	kf5attica-devel
-BuildRequires:	kf5config-devel
-BuildRequires:	kf5configwidgets-devel
-BuildRequires:	kf5coreaddons-devel
-BuildRequires:	kf5dbusaddons-devel
-BuildRequires:	kf5declarative-devel
-BuildRequires:	kf5i18n-devel
-BuildRequires:	kf5iconthemes-devel
-BuildRequires:	kf5itemviews-devel
-BuildRequires:	kf5kdelibs4support-devel
-BuildRequires:	kf5kio-devel
-BuildRequires:	kf5newstuff-devel
-BuildRequires:	kf5notifications-devel
-BuildRequires:	kf5plasma-devel
-BuildRequires:	kf5solid-devel
-BuildRequires:	kf5wallet-devel
-BuildRequires:	kf5widgetsaddons-devel
-BuildRequires:	pkgconfig(phonon4qt5)
+BuildRequires:	cmake(KF5Attica)
+BuildRequires:	cmake(KF5Config)
+BuildRequires:	cmake(KF5ConfigWidgets)
+BuildRequires:	cmake(KF5CoreAddons)
+BuildRequires:	cmake(KF5DBusAddons)
+BuildRequires:	cmake(KF5Declarative2)
+BuildRequires:	cmake(KF5I18n)
+BuildRequires:	cmake(KF5IconThemes)
+BuildRequires:	cmake(KF5ItemViews)
+BuildRequires:	cmake(KFKdelibs4Support)
+BuildRequires:	cmake(KF5KIO)
+BuildRequires:	cmake(KF5Newstuff)
+BuildRequires:	cmake(KF5Notifications)
+BuildRequires:	cmake(KF5Plasma)
+BuildRequires:	cmake(KF5Solid)
+BuildRequires:	cmake(KF5Wallet)
+BuildRequires:	cmake(KF5WidgetsAddons)
+BuildRequires:	cmake(Phonon4Qt5)
 BuildRequires:	pkgconfig(Qt5Concurrent)
 BuildRequires:	pkgconfig(Qt5Core)
 BuildRequires:	pkgconfig(Qt5DBus)
@@ -53,12 +53,12 @@ Plasma 5 package manager.
 %{_kde5_applicationsdir}/muon-discover-category.desktop
 %{_kde5_applicationsdir}/muon-discover.desktop
 %{_kde5_applicationsdir}/muon-updater.desktop
-%{_kde5_bindir}/muon-discover
-%{_kde5_bindir}/muon-updater
-%{_kde5_datadir}/muondiscover/featured.json
-%dir %{_kde5_datadir}/desktoptheme/muon-contenttheme/
-%{_kde5_datadir}/desktoptheme/muon-contenttheme/*
-%{_kde5_iconsdir}/hicolor/*/apps/muondiscover.*
+%{_bindir}/muon-discover
+%{_bindir}/muon-updater
+%{_datadir}/muondiscover/featured.json
+%dir %{_datadir}/desktoptheme/muon-contenttheme/
+%{_datadir}/desktoptheme/muon-contenttheme/*
+%{_iconsdir}/hicolor/*/apps/muondiscover.*
 %{_kde5_xmlguidir}/muondiscover/muondiscoverui.rc
 %{_kde5_xmlguidir}/muonupdater/muonupdaterui.rc
 
@@ -72,10 +72,10 @@ Group:		Graphical desktop/KDE
 KNewStuff backend for Muon.
 
 %files backend-kns
-%{_kde5_datadir}/libmuon/backends/muon-knscomics-backend.desktop
-%{_kde5_datadir}/libmuon/backends/muon-knsplasmoids-backend.desktop
-%{_kde5_datadir}/libmuon/categories/muon-knscomics-backend-categories.xml
-%{_kde5_datadir}/libmuon/categories/muon-knsplasmoids-backend-categories.xml
+%{_datadir}/libmuon/backends/muon-knscomics-backend.desktop
+%{_datadir}/libmuon/backends/muon-knsplasmoids-backend.desktop
+%{_datadir}/libmuon/categories/muon-knscomics-backend-categories.xml
+%{_datadir}/libmuon/categories/muon-knsplasmoids-backend-categories.xml
 %{_qt5_plugindir}/muon/muon-knsbackend.so
 
 #----------------------------------------------------------------------------
@@ -89,8 +89,8 @@ Group:		Graphical desktop/KDE
 PackageKit backend for Muon.
 
 %files backend-packagekit
-%{_kde5_datadir}/libmuon/backends/muon-packagekit-backend.desktop
-%{_kde5_datadir}/libmuon/categories/muon-packagekit-backend-categories.xml
+%{_datadir}/libmuon/backends/muon-packagekit-backend.desktop
+%{_datadir}/libmuon/categories/muon-packagekit-backend-categories.xml
 %{_qt5_plugindir}/muon/muon-pkbackend.so
 %{_qt5_plugindir}/muon-notifier/MuonPackageKitNotifier.so
 %endif
@@ -107,8 +107,8 @@ Requires:	muon-qml = %{EVRD}
 Plasma 5 muon notifier plasmoid.
 
 %files -n plasma5-applet-muonnotifier -f plasma_applet_org.kde.muonnotifier.lang
-%dir %{_kde5_datadir}/plasma/plasmoids/org.kde.muonnotifier/
-%{_kde5_datadir}/plasma/plasmoids/org.kde.muonnotifier/*
+%dir %{_datadir}/plasma/plasmoids/org.kde.muonnotifier/
+%{_datadir}/plasma/plasmoids/org.kde.muonnotifier/*
 %{_kde5_services}/plasma-applet-org.kde.muonnotifier.desktop
 %dir %{_kde5_qmldir}/org/kde/muonnotifier/
 %{_kde5_qmldir}/org/kde/muonnotifier/*
@@ -124,7 +124,7 @@ BuildArch:	noarch
 Plasma 5 package manager library common data files.
 
 %files -n libmuon-common
-%{_kde5_datadir}/libmuon/moo.ogg
+%{_datadir}/libmuon/moo.ogg
 %{_kde5_notificationsdir}/muonabstractnotifier.notifyrc
 
 #----------------------------------------------------------------------------
@@ -158,51 +158,51 @@ QML plugin for Plasma 5 package manager.
 
 #----------------------------------------------------------------------------
 
-%define muoncommon_major 5
-%define libmuoncommon %mklibname muoncommon %{muoncommon_major}
+%define libMuonCommon_major 5
+%define libMuonCommonn %mklibname MuonCommon %{libMuonCommon_major}
 
-%package -n %{libmuoncommon}
+%package -n %{libMuonCommon}
 Summary:	Plasma 5 package manager shared library
 Group:		System/Libraries
 Requires:	%{qmlmuon}
 Requires:	libmuon-common
 Requires:	libmuon-i18n
 
-%description -n %{libmuoncommon}
+%description -n %{libMuonCommon}
 Plasma 5 package manager shared library.
 
-%files -n %{libmuoncommon}
-%{_kde5_libdir}/libMuonCommon.so.%{muoncommon_major}*
+%files -n %{libMuonCommon}
+%{_libdir}/libMuonCommon.so.%{libMuonCommon_major}*
 
 #----------------------------------------------------------------------------
 
-%define muonnotifiers_major 5
-%define libmuonnotifiers %mklibname notifiers %{muonnotifiers_major}
+%define libMuonNotifiers_major 5
+%define libMuonNotifiers %mklibname MuonNotifiers %{libMuonNotifiers_major}
 
-%package -n %{libmuonnotifiers}
+%package -n %{libMuonNotifiers}
 Summary:	Plasma 5 package manager shared library
 Group:		System/Libraries
 Requires:	%{qmlmuon}
 Requires:	libmuon-i18n
 
-%description -n %{libmuonnotifiers}
+%description -n %{libMuonNotifiers}
 Plasma 5 package manager shared library.
 
 %files -n %{libmuonnotifiers}
-%{_kde5_libdir}/libMuonNotifiers.so.%{muonnotifiers_major}*
+%{_libdir}/libMuonNotifiers.so.%{libMuonNotifiers_major}*
 
 #----------------------------------------------------------------------------
 
 %prep
 %setup -q
 %patch0 -p1
+%cmake_kde5
 
 %build
-%cmake_kde5
-%make
+%ninja -C build
 
 %install
-%makeinstall_std -C build
+%ninja_install -C build
 
 rm -f %{buildroot}%{_kde5_libdir}/libMuonCommon.so
 rm -f %{buildroot}%{_kde5_libdir}/libMuonNotifiers.so
