@@ -49,7 +49,7 @@ Requires:	%{name}-backend-kns
 %description
 Plasma 5 package manager.
 
-%files -f %{name}.lang
+%files -f all.lang
 #%{_kde5_applicationsdir}/muon-discover-category.desktop
 #%{_kde5_applicationsdir}/muon-discover.desktop
 #%{_kde5_applicationsdir}/muon-updater.desktop
@@ -146,7 +146,7 @@ Plasma 5 package manager library translations.
 %package -n %{qmlmuon}
 Summary:	QML plugin for Plasma 5 package manager
 Group:		System/Libraries
-Requires:	kf5plasma-qml
+Requires:	plasma-framework
 Provides:	muon-qml = %{EVRD}
 
 %description -n %{qmlmuon}
@@ -212,7 +212,7 @@ rm -f %{buildroot}%{_libdir}/libMuonNotifiers.so
 %find_lang muon-exporter
 %find_lang muon-notifier
 %find_lang muon-updater 
-cat *.lang > muon.lang
+cat *.lang > all.lang
 
 %find_lang plasma_applet_org.kde.muonnotifier
 %find_lang libmuon
