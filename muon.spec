@@ -207,6 +207,12 @@ Plasma 5 package manager shared library.
 rm -f %{buildroot}%{_libdir}/libMuonCommon.so
 rm -f %{buildroot}%{_libdir}/libMuonNotifiers.so
 
-%find_lang %{name} muon-discover muon-exporter muon-notifier muon-updater %{name}.lang
+%find_lang %{name}
+%find_lang muon-discover
+%find_lang muon-exporter
+%find_lang muon-notifier
+%find_lang muon-updater 
+cat *.lang > muon.lang
+
 %find_lang plasma_applet_org.kde.muonnotifier
 %find_lang libmuon
