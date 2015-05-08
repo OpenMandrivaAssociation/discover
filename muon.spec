@@ -50,17 +50,17 @@ Requires:	%{name}-backend-kns
 Plasma 5 package manager.
 
 %files -f all.lang
-#%{_kde5_applicationsdir}/muon-discover-category.desktop
-#%{_kde5_applicationsdir}/muon-discover.desktop
-#%{_kde5_applicationsdir}/muon-updater.desktop
+%{_datadir}/applications/muon-discover-category.desktop
+%{_datadir}/applications/muon-discover.desktop
+%{_datadir}/applications/muon-updater.desktop
 %{_bindir}/muon-discover
 %{_bindir}/muon-updater
 %{_datadir}/muondiscover/featured.json
 %dir %{_datadir}/desktoptheme/muon-contenttheme/
 %{_datadir}/desktoptheme/muon-contenttheme/*
 %{_iconsdir}/hicolor/*/apps/muondiscover.*
-#%{_kde5_xmlguidir}/muondiscover/muondiscoverui.rc
-#%{_kde5_xmlguidir}/muonupdater/muonupdaterui.rc
+%{_datadir}/kxmlgui5/muondiscover/muondiscoverui.rc
+%{_datadir}/kxmlgui5/muonupdater/muonupdaterui.rc
 
 #----------------------------------------------------------------------------
 
@@ -76,7 +76,7 @@ KNewStuff backend for Muon.
 %{_datadir}/libmuon/backends/muon-knsplasmoids-backend.desktop
 %{_datadir}/libmuon/categories/muon-knscomics-backend-categories.xml
 %{_datadir}/libmuon/categories/muon-knsplasmoids-backend-categories.xml
-#%{_qt5_plugindir}/muon/muon-knsbackend.so
+%{_libdir}/qt5/plugins/muon/muon-knsbackend.so
 
 #----------------------------------------------------------------------------
 
@@ -91,8 +91,8 @@ PackageKit backend for Muon.
 %files backend-packagekit
 %{_datadir}/libmuon/backends/muon-packagekit-backend.desktop
 %{_datadir}/libmuon/categories/muon-packagekit-backend-categories.xml
-#%{_qt5_plugindir}/muon/muon-pkbackend.so
-#%{_qt5_plugindir}/muon-notifier/MuonPackageKitNotifier.so
+%{_libdir}/qt5/plugins/muon/muon-pkbackend.so
+%{_libdir}/qt5/plugins/muon-notifier/MuonPackageKitNotifier.so
 %endif
 
 #----------------------------------------------------------------------------
@@ -109,9 +109,9 @@ Plasma 5 muon notifier plasmoid.
 %files -n plasma5-applet-muonnotifier -f plasma_applet_org.kde.muonnotifier.lang
 %dir %{_datadir}/plasma/plasmoids/org.kde.muonnotifier/
 %{_datadir}/plasma/plasmoids/org.kde.muonnotifier/*
-#%{_kde5_services}/plasma-applet-org.kde.muonnotifier.desktop
-#%dir %{_kde5_qmldir}/org/kde/muonnotifier/
-#%{_kde5_qmldir}/org/kde/muonnotifier/*
+%{_datadir}/kservices5/plasma-applet-org.kde.muonnotifier.desktop
+%dir %{_libdir}/qt5/qml/org/kde/muonnotifier/
+%{_libdir}/qt5/qml/org/kde/muonnotifier/*
 
 #----------------------------------------------------------------------------
 
@@ -125,7 +125,7 @@ Plasma 5 package manager library common data files.
 
 %files -n libmuon-common
 %{_datadir}/libmuon/moo.ogg
-#%{_kde5_notificationsdir}/muonabstractnotifier.notifyrc
+%{_datadir}/knotifications5/muonabstractnotifier.notifyrc
 
 #----------------------------------------------------------------------------
 
@@ -153,8 +153,8 @@ Provides:	muon-qml = %{EVRD}
 QML plugin for Plasma 5 package manager.
 
 %files -n %{qmlmuon}
-#%dir %{_kde5_qmldir}/org/kde/muon/
-#%{_kde5_qmldir}/org/kde/muon/*
+%dir %{_libdir}/qt5/qml/org/kde/muon/
+%{_libdir}/qt5/qml/org/kde/muon/*
 
 #----------------------------------------------------------------------------
 
