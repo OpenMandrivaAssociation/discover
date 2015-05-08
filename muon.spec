@@ -159,7 +159,7 @@ QML plugin for Plasma 5 package manager.
 #----------------------------------------------------------------------------
 
 %define libMuonCommon_major 5
-%define libMuonCommonn %mklibname MuonCommon %{libMuonCommon_major}
+%define libMuonCommon %mklibname MuonCommon %{libMuonCommon_major}
 
 %package -n %{libMuonCommon}
 Summary:	Plasma 5 package manager shared library
@@ -188,7 +188,7 @@ Requires:	libmuon-i18n
 %description -n %{libMuonNotifiers}
 Plasma 5 package manager shared library.
 
-%files -n %{libmuonnotifiers}
+%files -n %{libMuonNotifiers}
 %{_libdir}/libMuonNotifiers.so.%{libMuonNotifiers_major}*
 
 #----------------------------------------------------------------------------
