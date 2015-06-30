@@ -2,7 +2,7 @@
 
 Summary:	Plasma 5 package manager
 Name:		muon
-Version:	5.3.1
+Version:	5.3.2
 Release:	1
 License:	GPLv2+
 Group:		Graphical desktop/KDE
