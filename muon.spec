@@ -124,7 +124,6 @@ BuildArch:	noarch
 Plasma 5 package manager library common data files.
 
 %files -n libmuon-common
-%{_datadir}/libmuon/moo.ogg
 %{_datadir}/knotifications5/muonabstractnotifier.notifyrc
 
 #----------------------------------------------------------------------------
