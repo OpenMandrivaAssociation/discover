@@ -3,7 +3,7 @@
 Summary:	Plasma 5 package manager
 Name:		muon
 Version:	5.4.0
-Release:	1
+Release:	2
 License:	GPLv2+
 Group:		Graphical desktop/KDE
 Url:		https://www.kde.org/
@@ -100,8 +100,11 @@ PackageKit backend for Muon.
 %package -n plasma5-applet-muonnotifier
 Summary:	Plasma 5 muon notifier plasmoid
 Group:		Graphical desktop/KDE
-Requires:	%{name}
+Requires:	%{name} = %{EVRD}
 Requires:	muon-qml = %{EVRD}
+%if %{with packagekit}
+Requires:	%{name}-backend-packagekit = %{EVRD}
+%endif
 
 %description -n plasma5-applet-muonnotifier
 Plasma 5 muon notifier plasmoid.
