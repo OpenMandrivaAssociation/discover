@@ -2,8 +2,8 @@
 
 Summary:	Plasma 5 package manager
 Name:		muon
-Version:	5.4.0
-Release:	2
+Version:	5.4.1
+Release:	1
 License:	GPLv2+
 Group:		Graphical desktop/KDE
 Url:		https://www.kde.org/
