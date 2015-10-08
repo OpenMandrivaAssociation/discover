@@ -50,9 +50,7 @@ Requires:	%{name}-backend-kns
 Plasma 5 package manager.
 
 %files -f all.lang
-%{_datadir}/applications/muon-discover-category.desktop
-%{_datadir}/applications/muon-discover.desktop
-%{_datadir}/applications/muon-updater.desktop
+%{_datadir}/applications/*.desktop
 %{_bindir}/muon-discover
 %{_bindir}/muon-updater
 %{_datadir}/muondiscover/featured.json
