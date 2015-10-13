@@ -3,7 +3,7 @@
 Summary:	Plasma 5 package manager
 Name:		muon
 Version:	5.4.2
-Release:	1
+Release:	2
 License:	GPLv2+
 Group:		Graphical desktop/KDE
 Url:		https://www.kde.org/
@@ -95,19 +95,20 @@ PackageKit backend for Muon.
 
 #----------------------------------------------------------------------------
 
-%package -n plasma5-applet-muonnotifier
-Summary:	Plasma 5 muon notifier plasmoid
+%package	notifier
+Summary:	%{name} notifier
 Group:		Graphical desktop/KDE
 Requires:	%{name} = %{EVRD}
 Requires:	muon-qml = %{EVRD}
+%rename	plasma5-applet-muonnotifier
 %if %{with packagekit}
 Requires:	%{name}-backend-packagekit = %{EVRD}
 %endif
 
-%description -n plasma5-applet-muonnotifier
-Plasma 5 muon notifier plasmoid.
+%description notifier
+%{name} notifier plasmoid.
 
-%files -n plasma5-applet-muonnotifier -f plasma_applet_org.kde.muonnotifier.lang
+%files notifier -f plasma_applet_org.kde.muonnotifier.lang
 %dir %{_datadir}/plasma/plasmoids/org.kde.muonnotifier/
 %{_datadir}/plasma/plasmoids/org.kde.muonnotifier/*
 %{_datadir}/kservices5/plasma-applet-org.kde.muonnotifier.desktop
@@ -120,24 +121,13 @@ Plasma 5 muon notifier plasmoid.
 Summary:	Plasma 5 package manager library common data files
 Group:		Graphical desktop/KDE
 BuildArch:	noarch
+%rename libmuon-i18n
 
 %description -n libmuon-common
 Plasma 5 package manager library common data files.
 
-%files -n libmuon-common
+%files -n libmuon-common -f libmuon.lang
 %{_datadir}/knotifications5/muonabstractnotifier.notifyrc
-
-#----------------------------------------------------------------------------
-
-%package -n libmuon-i18n
-Summary:	Plasma 5 package manager library translations
-Group:		System/Internationalization
-BuildArch:	noarch
-
-%description -n libmuon-i18n
-Plasma 5 package manager library translations.
-
-%files -n libmuon-i18n -f libmuon.lang
 
 #----------------------------------------------------------------------------
 
@@ -166,7 +156,6 @@ Summary:	Plasma 5 package manager shared library
 Group:		System/Libraries
 Requires:	%{qmlmuon}
 Requires:	libmuon-common
-Requires:	libmuon-i18n
 
 %description -n %{libMuonCommon}
 Plasma 5 package manager shared library.
@@ -183,7 +172,7 @@ Plasma 5 package manager shared library.
 Summary:	Plasma 5 package manager shared library
 Group:		System/Libraries
 Requires:	%{qmlmuon}
-Requires:	libmuon-i18n
+Requires:	libmuon-common
 
 %description -n %{libMuonNotifiers}
 Plasma 5 package manager shared library.
