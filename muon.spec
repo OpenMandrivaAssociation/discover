@@ -8,7 +8,6 @@ License:	GPLv2+
 Group:		Graphical desktop/KDE
 Url:		https://www.kde.org/
 Source0:	http://download.kde.org/stable/%{name}/%{version}/%{name}-%{version}.tar.xz
-Patch0:		muon-5.3.0-soname.patch
 BuildRequires:	cmake(ECM)
 %if %{with packagekit}
 BuildRequires:	appstream-qt5-devel
