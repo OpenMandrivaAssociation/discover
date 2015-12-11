@@ -1,4 +1,4 @@
-%bcond_without packagekit
+#%bcond_without packagekit
 
 Summary:	Plasma 5 package manager
 Name:		discover
@@ -81,7 +81,7 @@ Plasma 5 package manager.
 #%{_datadir}/libmuon/categories/muon-packagekit-backend-categories.xml
 #%{_libdir}/qt5/plugins/muon/muon-pkbackend.so
 #%{_libdir}/qt5/plugins/muon-notifier/MuonPackageKitNotifier.so
-%endif
+#%endif
 
 #----------------------------------------------------------------------------
 
