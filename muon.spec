@@ -2,12 +2,12 @@
 
 Summary:	Plasma 5 package manager
 Name:		muon
-Version:	5.4.3
+Version:	5.5.0
 Release:	1
 License:	GPLv2+
 Group:		Graphical desktop/KDE
 Url:		https://www.kde.org/
-Source0:	http://download.kde.org/stable/plasma/%{version}/%{name}-%{version}.tar.xz
+Source0:	http://download.kde.org/stable/%{name}/%{version}/%{name}-%{version}.tar.xz
 Patch0:		muon-5.3.0-soname.patch
 BuildRequires:	cmake(ECM)
 %if %{with packagekit}
