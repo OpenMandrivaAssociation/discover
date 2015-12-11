@@ -1,4 +1,4 @@
-#%bcond_without packagekit
+%bcond_without packagekit
 
 Summary:	Plasma 5 package manager
 Name:		discover
@@ -39,6 +39,7 @@ Requires:	%{name}-backend-kns
 Plasma 5 package manager.
 
 %files
+
 #-f all.lang
 #%{_datadir}/applications/*.desktop
 #%{_bindir}/muon-discover
