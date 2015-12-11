@@ -38,7 +38,8 @@ Requires:	%{name}-backend-kns
 %description
 Plasma 5 package manager.
 
-%files -f all.lang
+%files
+#-f all.lang
 #%{_datadir}/applications/*.desktop
 #%{_bindir}/muon-discover
 #%{_bindir}/muon-updater
@@ -67,15 +68,15 @@ Plasma 5 package manager.
 
 #----------------------------------------------------------------------------
 
-%if %{with packagekit}
-%package backend-packagekit
-Summary:	PackageKit backend for Muon
-Group:		Graphical desktop/KDE
+#%if %{with packagekit}
+#%package backend-packagekit
+#Summary:	PackageKit backend for Muon
+#Group:		Graphical desktop/KDE
 
-%description backend-packagekit
-PackageKit backend for Muon.
+#%description backend-packagekit
+#PackageKit backend for Muon.
 
-%files backend-packagekit
+#%files backend-packagekit
 #%{_datadir}/libmuon/backends/muon-packagekit-backend.desktop
 #%{_datadir}/libmuon/categories/muon-packagekit-backend-categories.xml
 #%{_libdir}/qt5/plugins/muon/muon-pkbackend.so
