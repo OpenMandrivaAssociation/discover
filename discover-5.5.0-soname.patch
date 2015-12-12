@@ -14,7 +14,7 @@ diff -Naur discover-5.5.0/libdiscover/notifiers/CMakeLists.txt discover-5.5.0.tp
 +++ discover-5.5.0.tpg/libdiscover/notifiers/CMakeLists.txt	2015-12-12 15:20:03.138100145 +0000
 @@ -1,4 +1,5 @@
  add_library(DiscoverNotifiers BackendNotifierModule.cpp)
-+set_target_properties(DiscoverNotifiers PROPERTIES VERSION ${PROJECT_VERSION} SOVERSION ${PROJECT_VERSION_MAJOR}
++set_target_properties(DiscoverNotifiers PROPERTIES VERSION ${PROJECT_VERSION} SOVERSION ${PROJECT_VERSION_MAJOR})
  target_link_libraries(DiscoverNotifiers
      PUBLIC
          Qt5::Core
