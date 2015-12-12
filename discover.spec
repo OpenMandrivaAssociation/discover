@@ -109,6 +109,39 @@ Requires:	%{name}-backend-packagekit = %{EVRD}
 %{_datadir}/kservices5/plasma-applet-org.kde.discovernotifier.desktop
 %{_libdir}/qt5/plugins/discover-notifier/MuonPackageKitNotifier.so
 %{_libdir}/qt5/qml/org/kde/discovernotifier
+#----------------------------------------------------------------------------
+
+%define libDiscoverCommon_major 5
+%define libDiscoverCommon %mklibname DiscoverCommon %{libDiscoverCommon_major}
+
+%package -n %{libDiscoverCommon}
+Summary:	Plasma 5 package manager shared library
+Group:		System/Libraries
+Obsoletes:	%{mklibname MuonCommon 5} < 5.5.0
+
+%description -n %{libDiscoverCommon}
+Plasma 5 package manager shared library.
+
+%files -n %{libDiscoverCommon}
+%{_libdir}/libDiscoverCommon.so.%{libDiscoverCommon_major}*
+
+#----------------------------------------------------------------------------
+
+%define libDiscovernNotifiers_major 5
+%define libDiscoverNotifiers %mklibname DiscoverNotifiers %{libDiscoverNotifiers_major}
+
+%package -n %{libDiscoverNotifiers}
+Summary:	Plasma 5 package manager shared library
+Group:		System/Libraries
+Obsoletes:	%{mklibname MuonNotifiers 5} < 5.5.0
+
+%description -n %{libDiscoverNotifiers}
+Plasma 5 package manager shared library.
+
+%files -n %{libDiscoverNotifiers}
+%{_libdir}/libDiscoverNotifiers.so.%{libDiscoverNotifiers_major}*
+
+#----------------------------------------------------------------------------
 
 %prep
 %setup -q
