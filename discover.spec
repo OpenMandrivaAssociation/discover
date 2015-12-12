@@ -10,7 +10,7 @@ Url:		https://www.kde.org/
 Source0:	http://download.kde.org/stable/%{name}/%{version}/%{name}-%{version}.tar.xz
 BuildRequires:	cmake(ECM)
 %if %{with packagekit}
-BuildRequires:	pkgconfig(AppstreamQt)
+BuildRequires:	cmake(AppstreamQt)
 BuildRequires:	pkgconfig(packagekitqt5)
 %endif
 BuildRequires:	pkgconfig(Qt5Widgets)
