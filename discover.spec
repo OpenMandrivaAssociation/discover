@@ -34,11 +34,80 @@ BuildRequires:	cmake(KF5NewStuff)
 BuildRequires:	cmake(KF5I18n)
 BuildRequires:	cmake(KF5Plasma)
 BuildRequires:	cmake(KF5Wallet)
+Requires:	%{name}-backend-kns
+%rename	muon
+%rename %{_lib}muon-qml
+%rename libmuon-qml
 
 %description
 Plasma 5 package manager.
 
-%files
+%files -f all.lang
+%{_datadir}/applications/*.desktop
+%{_bindir}/muon-discover
+%{_bindir}/muon-updater
+%{_libdir}/qt5/qml/org/kde/discover
+%{_datadir}/muondiscover/featured.json
+%{_iconsdir}/hicolor/*/apps/muondiscover.*
+%{_datadir}/kxmlgui5/muondiscover/muondiscoverui.rc
+%{_datadir}/kxmlgui5/muonupdater/muonupdaterui.rc
+%{_datadir}/knotifications5/muonabstractnotifier.notifyrc
+
+#----------------------------------------------------------------------------
+
+%package backend-kns
+Summary:	KNewStuff backend for %{name}
+Group:		Graphical desktop/KDE
+%rename	muon-backend-kns
+
+%description backend-kns
+KNewStuff backend for %{name}.
+
+%files backend-kns
+%{_libdir}/qt5/plugins/discover/kns-backend.so
+%{_datadir}/libdiscover/backends/knscomics-backend.desktop
+%{_datadir}/libdiscover/backends/knsplasmoids-backend.desktop
+%{_datadir}/libdiscover/categories/knscomics-backend-categories.xml
+%{_datadir}/libdiscover/categories/knsplasmoids-backend-categories.xml
+
+#----------------------------------------------------------------------------
+
+%if %{with packagekit}
+%package backend-packagekit
+Summary:	PackageKit backend for %{name}
+Group:		Graphical desktop/KDE
+%rename	muon-backend-packagekit
+
+%description backend-packagekit
+PackageKit backend for %{name}.
+
+%files backend-packagekit
+%{_libdir}/qt5/plugins/discover/packagekit-backend.so
+%{_datadir}/libdiscover/categories/packagekit-backend-categories.xml
+%{_datadir}/libdiscover/backends/packagekit-backend.desktop
+%endif
+
+#----------------------------------------------------------------------------
+
+%package notifier
+Summary:	%{name} notifier
+Group:		Graphical desktop/KDE
+Requires:	%{name} = %{EVRD}
+%rename	plasma5-applet-muonnotifier
+%rename	muon-notifier
+%if %{with packagekit}
+Requires:	%{name}-backend-packagekit = %{EVRD}
+%endif
+
+%description notifier
+%{name} notifier plasmoid.
+
+%files notifier -f plasma_applet_org.kde.muonnotifier.lang
+%dir %{_datadir}/plasma/plasmoids/org.kde.discovernotifier
+%{_datadir}/plasma/plasmoids/org.kde.discovernotifier/*
+%{_datadir}/kservices5/plasma-applet-org.kde.discovernotifier.desktop
+%{_libdir}/qt5/plugins/discover-notifier/MuonPackageKitNotifier.so
+%{_libdir}/qt5/qml/org/kde/discovernotifier
 
 %prep
 %setup -q
@@ -50,3 +119,15 @@ Plasma 5 package manager.
 %install
 %ninja_install -C build
 
+rm -f %{buildroot}%{_libdir}/libDiscoverCommon.so
+rm -f %{buildroot}%{_libdir}/libDiscoverNotifiers.so
+
+%find_lang %{name}
+%find_lang muon-discover
+%find_lang muon-exporter
+%find_lang muon-notifier
+%find_lang muon-updater
+cat *.lang > all.lang
+
+%find_lang plasma_applet_org.kde.muonnotifier
+%find_lang libdiscover
