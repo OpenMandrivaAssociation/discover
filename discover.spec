@@ -3,7 +3,7 @@
 Summary:	Plasma 5 package manager
 Name:		discover
 Version:	5.5.0
-Release:	1
+Release:	2
 License:	GPLv2+
 Group:		Graphical desktop/KDE
 Url:		https://www.kde.org/
@@ -39,6 +39,7 @@ Requires:	%{name}-backend-kns
 %rename	muon
 %rename %{_lib}muon-qml
 %rename libmuon-qml
+%rename libmuon-common
 
 %description
 Plasma 5 package manager.
