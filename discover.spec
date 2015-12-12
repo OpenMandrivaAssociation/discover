@@ -33,6 +33,7 @@ BuildRequires:	cmake(KF5Attica)
 BuildRequires:	cmake(KF5NewStuff)
 BuildRequires:	cmake(KF5I18n)
 BuildRequires:	cmake(KF5Plasma)
+BuildRequires:	cmake(KF5Wallet)
 
 %description
 Plasma 5 package manager.
