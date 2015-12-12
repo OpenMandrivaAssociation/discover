@@ -122,7 +122,6 @@ Requires:	%{name}-backend-packagekit = %{EVRD}
 rm -f %{buildroot}%{_libdir}/libDiscoverCommon.so
 rm -f %{buildroot}%{_libdir}/libDiscoverNotifiers.so
 
-%find_lang %{name}
 %find_lang muon-discover
 %find_lang muon-exporter
 %find_lang muon-notifier
