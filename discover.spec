@@ -127,7 +127,7 @@ Plasma 5 package manager shared library.
 
 #----------------------------------------------------------------------------
 
-%define libDiscovernNotifiers_major 5
+%define libDiscoverNotifiers_major 5
 %define libDiscoverNotifiers %mklibname DiscoverNotifiers %{libDiscoverNotifiers_major}
 
 %package -n %{libDiscoverNotifiers}
