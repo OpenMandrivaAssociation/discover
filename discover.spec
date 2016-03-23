@@ -159,10 +159,10 @@ rm -f %{buildroot}%{_libdir}/libDiscoverCommon.so
 rm -f %{buildroot}%{_libdir}/libDiscoverNotifiers.so
 
 %find_lang libdiscover
-%find_lang muon-discover
-%find_lang muon-exporter
-%find_lang muon-notifier
-%find_lang muon-updater
+%find_lang plasma-discove
+%find_lang plasma-discover-notifier
+%find_lang plasma-discover-exporter
+%find_lang plasma-discover-updater
 cat *.lang > all.lang
 
 %find_lang plasma_applet_org.kde.muonnotifier
