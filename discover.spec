@@ -8,7 +8,7 @@ License:	GPLv2+
 Group:		Graphical desktop/KDE
 Url:		https://www.kde.org/
 Source0:	http://download.kde.org/stable/%{name}/%{version}/%{name}-%{version}.tar.xz
-Patch0:		discover-5.5.0-soname.patch
+#Patch0:		discover-5.5.0-soname.patch
 BuildRequires:	cmake(ECM)
 %if %{with packagekit}
 BuildRequires:	cmake(AppstreamQt)
@@ -46,14 +46,14 @@ Plasma 5 package manager.
 
 %files -f all.lang
 %{_datadir}/applications/*.desktop
-%{_bindir}/muon-discover
-%{_bindir}/muon-updater
+%{_bindir}/plasma-discover
+%{_bindir}/plasma-discover-updater
 %{_libdir}/qt5/qml/org/kde/discover
-%{_datadir}/muondiscover/featured.json
-%{_iconsdir}/hicolor/*/apps/muondiscover.*
-%{_datadir}/kxmlgui5/muondiscover/muondiscoverui.rc
-%{_datadir}/kxmlgui5/muonupdater/muonupdaterui.rc
-%{_datadir}/knotifications5/muonabstractnotifier.notifyrc
+%{_datadir}/plasmadiscover/featured.json
+%{_iconsdir}/hicolor/*/apps/plasmadiscover.*
+%{_datadir}/kxmlgui5/plasmadiscover/plasmadiscoverui.rc
+%{_datadir}/kxmlgui5/plasmadiscoverupdater/plasmadiscoverupdaterui.rc
+%{_datadir}/knotifications5/discoverabstractnotifier.notifyrc
 
 #----------------------------------------------------------------------------
 
@@ -108,7 +108,7 @@ Requires:	%{name}-backend-packagekit = %{EVRD}
 %dir %{_datadir}/plasma/plasmoids/org.kde.discovernotifier
 %{_datadir}/plasma/plasmoids/org.kde.discovernotifier/*
 %{_datadir}/kservices5/plasma-applet-org.kde.discovernotifier.desktop
-%{_libdir}/qt5/plugins/discover-notifier/MuonPackageKitNotifier.so
+%{_libdir}/qt5/plugins/discover-notifier/DiscoverPackageKitNotifier.so
 %{_libdir}/qt5/qml/org/kde/discovernotifier
 #----------------------------------------------------------------------------
 
