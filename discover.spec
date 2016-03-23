@@ -8,7 +8,6 @@ License:	GPLv2+
 Group:		Graphical desktop/KDE
 Url:		https://www.kde.org/
 Source0:	http://download.kde.org/stable/%{name}/%{version}/%{name}-%{version}.tar.xz
-#Patch0:		discover-5.5.0-soname.patch
 BuildRequires:	cmake(ECM)
 %if %{with packagekit}
 BuildRequires:	cmake(AppstreamQt)
@@ -40,14 +39,25 @@ Requires:	%{name}-backend-kns
 %rename %{_lib}muon-qml
 %rename libmuon-qml
 %rename libmuon-common
+Obsoletes:	%{mklibname MuonCommon 5} < 5.5.0
+Obsoletes:	%{mklibname MuonNotifiers 5} < 5.5.0
+Obsoletes:	%{mklibname DiscoverNotifiers 5} < 5.6.0
+Obsoletes:	%{mklibname DiscoverCommon 5} < 5.6.0
 
 %description
 Plasma 5 package manager.
 
 %files -f all.lang
+%dir %{_libdir}/plasma-discover
+%dir %{_datadir}/plasmadiscover
+%dir %{_datadir}/kxmlgui5/plasmadiscover
+%dir %{_datadir}/kxmlgui5/plasmadiscoverupdater
+
 %{_datadir}/applications/*.desktop
 %{_bindir}/plasma-discover
 %{_bindir}/plasma-discover-updater
+%{_libdir}/plasma-discover/libDiscoverCommon.so
+%{_libdir}/plasma-discover/libDiscoverNotifiers.so
 %{_libdir}/qt5/qml/org/kde/discover
 %{_datadir}/plasmadiscover/featured.json
 %{_iconsdir}/hicolor/*/apps/plasmadiscover.*
@@ -112,38 +122,6 @@ Requires:	%{name}-backend-packagekit = %{EVRD}
 %{_libdir}/qt5/qml/org/kde/discovernotifier
 #----------------------------------------------------------------------------
 
-%define libDiscoverCommon_major 5
-%define libDiscoverCommon %mklibname DiscoverCommon %{libDiscoverCommon_major}
-
-%package -n %{libDiscoverCommon}
-Summary:	Plasma 5 package manager shared library
-Group:		System/Libraries
-Obsoletes:	%{mklibname MuonCommon 5} < 5.5.0
-
-%description -n %{libDiscoverCommon}
-Plasma 5 package manager shared library.
-
-%files -n %{libDiscoverCommon}
-%{_libdir}/libDiscoverCommon.so.%{libDiscoverCommon_major}*
-
-#----------------------------------------------------------------------------
-
-%define libDiscoverNotifiers_major 5
-%define libDiscoverNotifiers %mklibname DiscoverNotifiers %{libDiscoverNotifiers_major}
-
-%package -n %{libDiscoverNotifiers}
-Summary:	Plasma 5 package manager shared library
-Group:		System/Libraries
-Obsoletes:	%{mklibname MuonNotifiers 5} < 5.5.0
-
-%description -n %{libDiscoverNotifiers}
-Plasma 5 package manager shared library.
-
-%files -n %{libDiscoverNotifiers}
-%{_libdir}/libDiscoverNotifiers.so.%{libDiscoverNotifiers_major}*
-
-#----------------------------------------------------------------------------
-
 %prep
 %setup -q
 %apply_patches
@@ -154,9 +132,6 @@ Plasma 5 package manager shared library.
 
 %install
 %ninja_install -C build
-
-rm -f %{buildroot}%{_libdir}/libDiscoverCommon.so
-rm -f %{buildroot}%{_libdir}/libDiscoverNotifiers.so
 
 %find_lang libdiscover
 %find_lang plasma-discover
