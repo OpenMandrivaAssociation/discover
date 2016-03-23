@@ -159,7 +159,7 @@ rm -f %{buildroot}%{_libdir}/libDiscoverCommon.so
 rm -f %{buildroot}%{_libdir}/libDiscoverNotifiers.so
 
 %find_lang libdiscover
-%find_lang plasma-discove
+%find_lang plasma-discover
 %find_lang plasma-discover-notifier
 %find_lang plasma-discover-exporter
 %find_lang plasma-discover-updater
