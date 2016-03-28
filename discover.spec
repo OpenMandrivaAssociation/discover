@@ -3,7 +3,7 @@
 Summary:	Plasma 5 package manager
 Name:		discover
 Version:	5.6.0
-Release:	1
+Release:	2
 License:	GPLv2+
 Group:		Graphical desktop/KDE
 Url:		https://www.kde.org/
@@ -58,6 +58,8 @@ Plasma 5 package manager.
 %{_bindir}/plasma-discover-updater
 %{_libdir}/plasma-discover/libDiscoverCommon.so
 %{_libdir}/plasma-discover/libDiscoverNotifiers.so
+%{_libdir}/libDiscoverCommon.so
+%{_libdir}/libDiscoverNotifiers.so
 %{_libdir}/qt5/qml/org/kde/discover
 %{_datadir}/plasmadiscover/featured.json
 %{_iconsdir}/hicolor/*/apps/plasmadiscover.*
@@ -132,6 +134,10 @@ Requires:	%{name}-backend-packagekit = %{EVRD}
 
 %install
 %ninja_install -C build
+
+# (tpg) add symlinks, fixes bug #1573
+ln -sf %{_libdir}/plasma-discover/libDiscoverCommon.so %{buildroot}%{libdir}/libDiscoverCommon.so
+ln -sf %{_libdir}/plasma-discover/libDiscoverNotifiers.so %{buildroot}%{libdir}/libDiscoverNotifiers.so
 
 %find_lang libdiscover
 %find_lang plasma-discover
