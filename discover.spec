@@ -136,8 +136,8 @@ Requires:	%{name}-backend-packagekit = %{EVRD}
 %ninja_install -C build
 
 # (tpg) add symlinks, fixes bug #1573
-ln -sf %{_libdir}/plasma-discover/libDiscoverCommon.so %{buildroot}%{libdir}/libDiscoverCommon.so
-ln -sf %{_libdir}/plasma-discover/libDiscoverNotifiers.so %{buildroot}%{libdir}/libDiscoverNotifiers.so
+ln -sf %{_libdir}/plasma-discover/libDiscoverCommon.so %{buildroot}%{_libdir}/libDiscoverCommon.so
+ln -sf %{_libdir}/plasma-discover/libDiscoverNotifiers.so %{buildroot}%{_libdir}/libDiscoverNotifiers.so
 
 %find_lang libdiscover
 %find_lang plasma-discover
