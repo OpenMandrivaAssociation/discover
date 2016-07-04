@@ -2,7 +2,7 @@
 
 Summary:	Plasma 5 package manager
 Name:		discover
-Version:	5.6.5
+Version:	5.7.0
 Release:	1
 License:	GPLv2+
 Group:		Graphical desktop/KDE
@@ -53,11 +53,9 @@ Plasma 5 package manager.
 %dir %{_libdir}/plasma-discover
 %dir %{_datadir}/plasmadiscover
 %dir %{_datadir}/kxmlgui5/plasmadiscover
-%dir %{_datadir}/kxmlgui5/plasmadiscoverupdater
 
 %{_datadir}/applications/*.desktop
 %{_bindir}/plasma-discover
-%{_bindir}/plasma-discover-updater
 %{_libdir}/plasma-discover/libDiscoverCommon.so
 %{_libdir}/plasma-discover/libDiscoverNotifiers.so
 %{_libdir}/libDiscoverCommon.so
@@ -66,8 +64,9 @@ Plasma 5 package manager.
 %{_datadir}/plasmadiscover/featured.json
 %{_iconsdir}/hicolor/*/apps/plasmadiscover.*
 %{_datadir}/kxmlgui5/plasmadiscover/plasmadiscoverui.rc
-%{_datadir}/kxmlgui5/plasmadiscoverupdater/plasmadiscoverupdaterui.rc
 %{_datadir}/knotifications5/discoverabstractnotifier.notifyrc
+%{_datadir}/appdata/org.kde.discover.appdata.xml
+
 
 #----------------------------------------------------------------------------
 
@@ -80,11 +79,14 @@ Group:		Graphical desktop/KDE
 KNewStuff backend for %{name}.
 
 %files backend-kns
+%{_sysconfdir}/xdg/discover_ktexteditor_codesnippets_core.knsrc
 %{_libdir}/qt5/plugins/discover/kns-backend.so
-%{_datadir}/libdiscover/backends/knscomics-backend.desktop
 %{_datadir}/libdiscover/backends/knsplasmoids-backend.desktop
-%{_datadir}/libdiscover/categories/knscomics-backend-categories.xml
 %{_datadir}/libdiscover/categories/knsplasmoids-backend-categories.xml
+%{_datadir}/libdiscover/backends/knscomic-backend.desktop
+%{_datadir}/libdiscover/categories/knscomic-backend-categories.xml
+%{_datadir}/libdiscover/backends/knsdiscover_ktexteditor_codesnippets_core-backend.desktop
+%{_datadir}/libdiscover/categories/knsdiscover_ktexteditor_codesnippets_core-backend-categories.xml
 
 #----------------------------------------------------------------------------
 
@@ -141,11 +143,11 @@ Requires:	%{name}-backend-packagekit = %{EVRD}
 ln -sf %{_libdir}/plasma-discover/libDiscoverCommon.so %{buildroot}%{_libdir}/libDiscoverCommon.so
 ln -sf %{_libdir}/plasma-discover/libDiscoverNotifiers.so %{buildroot}%{_libdir}/libDiscoverNotifiers.so
 
-%find_lang libdiscover
-%find_lang plasma-discover
-%find_lang plasma-discover-notifier
-%find_lang plasma-discover-exporter
-%find_lang plasma-discover-updater
+%find_lang libdiscover || touch libdiscover.lang
+%find_lang plasma-discover || touch plasma-discover.lang
+%find_lang plasma-discover-notifier || touch plasma-discover-notifier.lang
+%find_lang plasma-discover-exporter || touch plasma-discover-exporter.lang
+%find_lang plasma-discover-updater || touch plasma-discover-updater.lang
 cat *.lang > all.lang
 
-%find_lang plasma_applet_org.kde.muonnotifier
+%find_lang plasma_applet_org.kde.muonnotifier || touch plasma_applet_org.kde.muonnotifier.lang
