@@ -2,7 +2,7 @@
 
 Summary:	Plasma 5 package manager
 Name:		discover
-Version:	5.7.0
+Version:	5.7.1
 Release:	1
 License:	GPLv2+
 Group:		Graphical desktop/KDE
@@ -148,6 +148,7 @@ ln -sf %{_libdir}/plasma-discover/libDiscoverNotifiers.so %{buildroot}%{_libdir}
 %find_lang plasma-discover-notifier || touch plasma-discover-notifier.lang
 %find_lang plasma-discover-exporter || touch plasma-discover-exporter.lang
 %find_lang plasma-discover-updater || touch plasma-discover-updater.lang
+%find_lang plasma_applet_org.kde.discovernotifier || touch plasma_applet_org.kde.discovernotifier.lang
 cat *.lang > all.lang
 
 %find_lang plasma_applet_org.kde.muonnotifier || touch plasma_applet_org.kde.muonnotifier.lang
