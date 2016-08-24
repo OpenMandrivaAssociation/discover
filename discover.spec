@@ -2,7 +2,7 @@
 
 Summary:	Plasma 5 package manager
 Name:		discover
-Version:	5.7.2
+Version:	5.7.4
 Release:	1
 License:	GPLv2+
 Group:		Graphical desktop/KDE
@@ -65,7 +65,7 @@ Plasma 5 package manager.
 %{_iconsdir}/hicolor/*/apps/plasmadiscover.*
 %{_datadir}/kxmlgui5/plasmadiscover/plasmadiscoverui.rc
 %{_datadir}/knotifications5/discoverabstractnotifier.notifyrc
-%{_datadir}/appdata/org.kde.discover.appdata.xml
+%{_datadir}/metainfo/org.kde.discover.appdata.xml
 
 
 #----------------------------------------------------------------------------
