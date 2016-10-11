@@ -37,7 +37,6 @@ BuildRequires:	cmake(KF5Plasma)
 BuildRequires:	cmake(KF5Wallet)
 BuildRequires:	cmake(KF5Crash)
 BuildRequires:	cmake(KF5Declarative)
-BuildRequires:	cmake(AppstreamQt)
 Requires:	%{name}-backend-kns
 %rename	muon
 %rename %{_lib}muon-qml
