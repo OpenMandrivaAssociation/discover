@@ -37,6 +37,7 @@ BuildRequires:	cmake(KF5Plasma)
 BuildRequires:	cmake(KF5Wallet)
 BuildRequires:	cmake(KF5Crash)
 BuildRequires:	cmake(KF5Declarative)
+BuildRequires:	cmake(AppstreamQt)
 Requires:	%{name}-backend-kns
 %rename	muon
 %rename %{_lib}muon-qml
@@ -67,7 +68,6 @@ Plasma 5 package manager.
 %{_datadir}/kxmlgui5/plasmadiscover/plasmadiscoverui.rc
 %{_datadir}/knotifications5/discoverabstractnotifier.notifyrc
 %{_datadir}/metainfo/org.kde.discover.appdata.xml
-
 
 #----------------------------------------------------------------------------
 
@@ -124,9 +124,10 @@ Requires:	%{name}-backend-packagekit = %{EVRD}
 %files notifier -f plasma_applet_org.kde.muonnotifier.lang
 %dir %{_datadir}/plasma/plasmoids/org.kde.discovernotifier
 %{_datadir}/plasma/plasmoids/org.kde.discovernotifier/*
+%{_datadir}/metainfo/org.kde.discovernotifier.appdata.xml
 %{_datadir}/kservices5/plasma-applet-org.kde.discovernotifier.desktop
-%{_libdir}/qt5/plugins/discover-notifier/DiscoverPackageKitNotifier.so
 %{_libdir}/qt5/qml/org/kde/discovernotifier
+
 #----------------------------------------------------------------------------
 
 %prep
