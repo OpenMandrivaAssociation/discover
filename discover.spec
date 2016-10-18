@@ -2,7 +2,7 @@
 
 Summary:	Plasma 5 package manager
 Name:		discover
-Version:	5.7.4
+Version:	5.8.2
 Release:	1
 License:	GPLv2+
 Group:		Graphical desktop/KDE
@@ -13,6 +13,7 @@ BuildRequires:	cmake(ECM)
 BuildRequires:	cmake(AppstreamQt)
 BuildRequires:	pkgconfig(packagekitqt5)
 %endif
+BuildRequires:	kirigami
 BuildRequires:	pkgconfig(Qt5Widgets)
 BuildRequires:	pkgconfig(Qt5Test)
 BuildRequires:	pkgconfig(Qt5Network)
@@ -55,6 +56,7 @@ Plasma 5 package manager.
 %dir %{_datadir}/kxmlgui5/plasmadiscover
 
 %{_datadir}/applications/*.desktop
+%{_datadir}/discover
 %{_bindir}/plasma-discover
 %{_libdir}/plasma-discover/libDiscoverCommon.so
 %{_libdir}/plasma-discover/libDiscoverNotifiers.so
@@ -66,6 +68,7 @@ Plasma 5 package manager.
 %{_datadir}/kxmlgui5/plasmadiscover/plasmadiscoverui.rc
 %{_datadir}/knotifications5/discoverabstractnotifier.notifyrc
 %{_datadir}/metainfo/org.kde.discover.appdata.xml
+%{_datadir}/metainfo/org.kde.discovernotifier.appdata.xml
 
 
 #----------------------------------------------------------------------------
