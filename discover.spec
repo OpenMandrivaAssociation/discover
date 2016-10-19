@@ -69,7 +69,6 @@ Plasma 5 package manager.
 %{_datadir}/kxmlgui5/plasmadiscover/plasmadiscoverui.rc
 %{_datadir}/knotifications5/discoverabstractnotifier.notifyrc
 %{_datadir}/metainfo/org.kde.discover.appdata.xml
-%{_datadir}/metainfo/org.kde.discovernotifier.appdata.xml
 
 #----------------------------------------------------------------------------
 
@@ -104,6 +103,7 @@ PackageKit backend for %{name}.
 
 %files backend-packagekit
 %{_libdir}/qt5/plugins/discover/packagekit-backend.so
+%{_libdir}/qt5/plugins/discover-notifier/DiscoverPackageKitNotifier.so
 %{_datadir}/libdiscover/categories/packagekit-backend-categories.xml
 %{_datadir}/libdiscover/backends/packagekit-backend.desktop
 %endif
