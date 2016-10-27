@@ -3,7 +3,7 @@
 Summary:	Plasma 5 package manager
 Name:		discover
 Version:	5.8.2
-Release:	1
+Release:	1.1
 License:	GPLv2+
 Group:		Graphical desktop/KDE
 Url:		https://www.kde.org/
@@ -39,6 +39,7 @@ BuildRequires:	cmake(KF5Wallet)
 BuildRequires:	cmake(KF5Crash)
 BuildRequires:	cmake(KF5Declarative)
 Requires:	%{name}-backend-kns
+Requires:	kirigami
 %rename	muon
 %rename %{_lib}muon-qml
 %rename libmuon-qml
