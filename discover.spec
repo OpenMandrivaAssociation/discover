@@ -10,7 +10,7 @@ Url:		https://www.kde.org/
 Source0:	http://download.kde.org/stable/plasma/%{version}/%{name}-%{version}.tar.xz
 BuildRequires:	cmake(ECM)
 %if %{with packagekit}
-BuildRequires:	cmake(AppstreamQt) >= 0.10
+BuildRequires:	cmake(AppstreamQt) >= 0.10.4
 BuildRequires:	pkgconfig(packagekitqt5)
 %endif
 BuildRequires:	kirigami
