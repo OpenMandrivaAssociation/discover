@@ -3,14 +3,14 @@
 Summary:	Plasma 5 package manager
 Name:		discover
 Version:	5.8.4
-Release:	1.1
+Release:	2
 License:	GPLv2+
 Group:		Graphical desktop/KDE
 Url:		https://www.kde.org/
 Source0:	http://download.kde.org/stable/plasma/%{version}/%{name}-%{version}.tar.xz
 BuildRequires:	cmake(ECM)
 %if %{with packagekit}
-BuildRequires:	cmake(AppstreamQt)
+BuildRequires:	cmake(AppstreamQt) >= 0.10
 BuildRequires:	pkgconfig(packagekitqt5)
 %endif
 BuildRequires:	kirigami
