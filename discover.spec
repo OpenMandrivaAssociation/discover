@@ -58,11 +58,11 @@ Plasma 5 package manager.
 
 %files -f all.lang
 %dir %{_libdir}/plasma-discover
-%dir %{_datadir}/plasmadiscover
 %dir %{_datadir}/kxmlgui5/plasmadiscover
 %dir %{_libdir}/libexec/kf5/discover
 %{_datadir}/applications/*.desktop
 %{_datadir}/discover
+%{_bindir}/plasma-discover
 %{_libdir}/libexec/kf5/discover/runservice
 %{_libdir}/plasma-discover/libDiscoverCommon.so
 %{_libdir}/plasma-discover/libDiscoverNotifiers.so
