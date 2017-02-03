@@ -38,6 +38,7 @@ BuildRequires:	cmake(KF5Plasma)
 BuildRequires:	cmake(KF5Wallet)
 BuildRequires:	cmake(KF5Crash)
 BuildRequires:	cmake(KF5Declarative)
+BuildRequires:	cmake(KF5ItemModels)
 Requires:	%{name}-backend-kns
 Requires:	kirigami
 %rename	muon
