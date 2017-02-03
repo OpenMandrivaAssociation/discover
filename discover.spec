@@ -13,7 +13,6 @@ BuildRequires:	cmake(ECM)
 BuildRequires:	cmake(AppStreamQt) >= 0.10.4
 BuildRequires:	pkgconfig(packagekitqt5)
 %endif
-BuildRequires:	kirigami
 BuildRequires:	pkgconfig(Qt5Widgets)
 BuildRequires:	pkgconfig(Qt5Test)
 BuildRequires:	pkgconfig(Qt5Network)
@@ -39,6 +38,10 @@ BuildRequires:	cmake(KF5Wallet)
 BuildRequires:	cmake(KF5Crash)
 BuildRequires:	cmake(KF5Declarative)
 BuildRequires:	cmake(KF5ItemModels)
+# (tpg) this needs Qt 5.7.0 or newer, while 3.0 tree is still on Qt 5.6.x tree
+%if %mdvver > 3000000
+BuildRequires:	cmake(KF5Kirigami2)
+%endif
 Requires:	%{name}-backend-kns
 Requires:	kirigami
 %rename	muon
@@ -60,14 +63,12 @@ Plasma 5 package manager.
 %dir %{_libdir}/libexec/kf5/discover
 %{_datadir}/applications/*.desktop
 %{_datadir}/discover
-%{_bindir}/plasma-discover
 %{_libdir}/libexec/kf5/discover/runservice
 %{_libdir}/plasma-discover/libDiscoverCommon.so
 %{_libdir}/plasma-discover/libDiscoverNotifiers.so
 %{_libdir}/libDiscoverCommon.so
 %{_libdir}/libDiscoverNotifiers.so
 %{_libdir}/qt5/qml/org/kde/discover
-%{_datadir}/plasmadiscover/featured.json
 %{_iconsdir}/hicolor/*/apps/plasmadiscover.*
 %{_datadir}/kxmlgui5/plasmadiscover/plasmadiscoverui.rc
 %{_datadir}/knotifications5/discoverabstractnotifier.notifyrc
@@ -86,12 +87,6 @@ KNewStuff backend for %{name}.
 %files backend-kns
 %{_sysconfdir}/xdg/discover_ktexteditor_codesnippets_core.knsrc
 %{_libdir}/qt5/plugins/discover/kns-backend.so
-%{_datadir}/libdiscover/backends/knsplasmoids-backend.desktop
-%{_datadir}/libdiscover/categories/knsplasmoids-backend-categories.xml
-%{_datadir}/libdiscover/backends/knscomic-backend.desktop
-%{_datadir}/libdiscover/categories/knscomic-backend-categories.xml
-%{_datadir}/libdiscover/backends/knsdiscover_ktexteditor_codesnippets_core-backend.desktop
-%{_datadir}/libdiscover/categories/knsdiscover_ktexteditor_codesnippets_core-backend-categories.xml
 
 #----------------------------------------------------------------------------
 
@@ -108,7 +103,6 @@ PackageKit backend for %{name}.
 %{_libdir}/qt5/plugins/discover/packagekit-backend.so
 %{_libdir}/qt5/plugins/discover-notifier/DiscoverPackageKitNotifier.so
 %{_datadir}/libdiscover/categories/packagekit-backend-categories.xml
-%{_datadir}/libdiscover/backends/packagekit-backend.desktop
 %endif
 
 #----------------------------------------------------------------------------
