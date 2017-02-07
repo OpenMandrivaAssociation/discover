@@ -2,7 +2,7 @@
 
 Summary:	Plasma 5 package manager
 Name:		discover
-Version:	5.9.0
+Version:	5.9.1
 Release:	1
 License:	GPLv2+
 Group:		Graphical desktop/KDE
@@ -40,7 +40,7 @@ BuildRequires:	cmake(KF5Declarative)
 BuildRequires:	cmake(KF5ItemModels)
 # (tpg) this needs Qt 5.7.0 or newer, while 3.0 tree is still on Qt 5.6.x tree
 %if %mdvver > 3000000
-BuildRequires:	cmake(KF5Kirigami2)
+BuildRequires:	kirigami2
 %endif
 Requires:	%{name}-backend-kns
 Requires:	kirigami
