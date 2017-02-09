@@ -41,6 +41,7 @@ BuildRequires:	cmake(KF5ItemModels)
 BuildRequires:	kirigami2
 Requires:	%{name}-backend-kns
 Requires:	kirigami2
+Requires:	qt5-qtquickcontrols2
 %rename	muon
 %rename %{_lib}muon-qml
 %rename libmuon-qml
