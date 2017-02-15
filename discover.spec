@@ -64,8 +64,6 @@ Plasma 5 package manager.
 %{_libdir}/libexec/kf5/discover/runservice
 %{_libdir}/plasma-discover/libDiscoverCommon.so
 %{_libdir}/plasma-discover/libDiscoverNotifiers.so
-%{_libdir}/libDiscoverCommon.so
-%{_libdir}/libDiscoverNotifiers.so
 %{_libdir}/qt5/qml/org/kde/discover
 %{_iconsdir}/hicolor/*/apps/plasmadiscover.*
 %{_datadir}/kxmlgui5/plasmadiscover/plasmadiscoverui.rc
@@ -118,7 +116,7 @@ Requires:	%{name}-backend-packagekit = %{EVRD}
 %description notifier
 %{name} notifier plasmoid.
 
-%files notifier -f plasma_applet_org.kde.muonnotifier.lang
+%files notifier
 %dir %{_datadir}/plasma/plasmoids/org.kde.discovernotifier
 %{_datadir}/plasma/plasmoids/org.kde.discovernotifier/*
 %{_datadir}/metainfo/org.kde.discovernotifier.appdata.xml
@@ -130,7 +128,7 @@ Requires:	%{name}-backend-packagekit = %{EVRD}
 %prep
 %setup -q
 %apply_patches
-%cmake_kde5
+%cmake_kde5 -DCMAKE_SKIP_RPATH:BOOL=OFF
 
 %build
 %ninja -C build
@@ -138,16 +136,9 @@ Requires:	%{name}-backend-packagekit = %{EVRD}
 %install
 %ninja_install -C build
 
-# (tpg) add symlinks, fixes bug #1573
-ln -sf %{_libdir}/plasma-discover/libDiscoverCommon.so %{buildroot}%{_libdir}/libDiscoverCommon.so
-ln -sf %{_libdir}/plasma-discover/libDiscoverNotifiers.so %{buildroot}%{_libdir}/libDiscoverNotifiers.so
-
 %find_lang libdiscover || touch libdiscover.lang
 %find_lang plasma-discover || touch plasma-discover.lang
 %find_lang plasma-discover-notifier || touch plasma-discover-notifier.lang
-%find_lang plasma-discover-exporter || touch plasma-discover-exporter.lang
 %find_lang plasma-discover-updater || touch plasma-discover-updater.lang
 %find_lang plasma_applet_org.kde.discovernotifier || touch plasma_applet_org.kde.discovernotifier.lang
 cat *.lang > all.lang
-
-%find_lang plasma_applet_org.kde.muonnotifier || touch plasma_applet_org.kde.muonnotifier.lang
