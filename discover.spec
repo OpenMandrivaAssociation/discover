@@ -64,8 +64,6 @@ Plasma 5 package manager.
 %{_libdir}/libexec/kf5/discover/runservice
 %{_libdir}/plasma-discover/libDiscoverCommon.so
 %{_libdir}/plasma-discover/libDiscoverNotifiers.so
-%{_libdir}/libDiscoverCommon.so
-%{_libdir}/libDiscoverNotifiers.so
 %{_libdir}/qt5/qml/org/kde/discover
 %{_iconsdir}/hicolor/*/apps/plasmadiscover.*
 %{_datadir}/kxmlgui5/plasmadiscover/plasmadiscoverui.rc
@@ -137,10 +135,6 @@ Requires:	%{name}-backend-packagekit = %{EVRD}
 
 %install
 %ninja_install -C build
-
-# (tpg) add symlinks, fixes bug #1573
-ln -sf %{_libdir}/plasma-discover/libDiscoverCommon.so %{buildroot}%{_libdir}/libDiscoverCommon.so
-ln -sf %{_libdir}/plasma-discover/libDiscoverNotifiers.so %{buildroot}%{_libdir}/libDiscoverNotifiers.so
 
 %find_lang libdiscover || touch libdiscover.lang
 %find_lang plasma-discover || touch plasma-discover.lang
