@@ -1,4 +1,5 @@
 %bcond_without packagekit
+%define stable %([ "`echo %{version} |cut -d. -f3`" -ge 70 ] && echo -n un; echo -n stable)
 
 Summary:	Plasma 5 package manager
 Name:		discover
@@ -7,7 +8,7 @@ Release:	1
 License:	GPLv2+
 Group:		Graphical desktop/KDE
 Url:		https://www.kde.org/
-Source0:	http://download.kde.org/stable/plasma/%{version}/%{name}-%{version}.tar.xz
+Source0:	http://download.kde.org/%{stable}/plasma/%{version}/%{name}-%{version}.tar.xz
 BuildRequires:	cmake(ECM)
 %if %{with packagekit}
 BuildRequires:	cmake(AppStreamQt) >= 0.10.4
