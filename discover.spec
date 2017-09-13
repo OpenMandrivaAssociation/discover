@@ -1,4 +1,3 @@
-%bcond_without packagekit
 %define stable %([ "`echo %{version} |cut -d. -f3`" -ge 70 ] && echo -n un; echo -n stable)
 
 Summary:	Plasma 5 package manager
@@ -10,10 +9,8 @@ Group:		Graphical desktop/KDE
 Url:		https://www.kde.org/
 Source0:	http://download.kde.org/%{stable}/plasma/%{version}/%{name}-%{version}.tar.xz
 BuildRequires:	cmake(ECM)
-%if %{with packagekit}
 BuildRequires:	cmake(AppStreamQt) >= 0.10.4
 BuildRequires:	pkgconfig(packagekitqt5)
-%endif
 BuildRequires:	pkgconfig(Qt5Widgets)
 BuildRequires:	pkgconfig(Qt5Test)
 BuildRequires:	pkgconfig(Qt5Network)
@@ -89,7 +86,6 @@ KNewStuff backend for %{name}.
 
 #----------------------------------------------------------------------------
 
-%if %{with packagekit}
 %package backend-packagekit
 Summary:	PackageKit backend for %{name}
 Group:		Graphical desktop/KDE
@@ -102,7 +98,20 @@ PackageKit backend for %{name}.
 %{_libdir}/qt5/plugins/discover/packagekit-backend.so
 %{_libdir}/qt5/plugins/discover-notifier/DiscoverPackageKitNotifier.so
 %{_datadir}/libdiscover/categories/packagekit-backend-categories.xml
-%endif
+
+#----------------------------------------------------------------------------
+
+%package backend-flatpak
+Summary:	Flatpak backend for %{name}
+Group:		Graphical desktop/KDE
+
+%description backend-flatpak
+Flatpak backend for %{name}.
+
+%files backend-flatpak
+%{_libdir}/qt5/plugins/discover/flatpak-backend.so
+%{_libdir}/qt5/plugins/discover-notifier/FlatpakNotifier.so
+%{_datadir}/libdiscover/categories/flatpak-backend-categories.xml
 
 #----------------------------------------------------------------------------
 
@@ -112,9 +121,8 @@ Group:		Graphical desktop/KDE
 Requires:	%{name} = %{EVRD}
 %rename	plasma5-applet-muonnotifier
 %rename	muon-notifier
-%if %{with packagekit}
 Requires:	%{name}-backend-packagekit = %{EVRD}
-%endif
+Requires:	%{name}-backend-flatpak = %{EVRD}
 
 %description notifier
 %{name} notifier plasmoid.
