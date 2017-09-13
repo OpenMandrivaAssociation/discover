@@ -39,7 +39,9 @@ BuildRequires:	cmake(KF5Wallet)
 BuildRequires:	cmake(KF5Crash)
 BuildRequires:	cmake(KF5Declarative)
 BuildRequires:	cmake(KF5ItemModels)
-BuildRequires:	kirigami2
+BuildRequires:	cmake(KKF5Kirigami2)
+BuildRequires:	git-core
+BuildRequires:	flatpak
 Requires:	%{name}-backend-kns
 Requires:	kirigami2
 Requires:	qt5-qtquickcontrols2
