@@ -3,7 +3,7 @@
 Summary:	Plasma 5 package manager
 Name:		discover
 Version:	5.10.5
-Release:	1
+Release:	2
 License:	GPLv2+
 Group:		Graphical desktop/KDE
 Url:		https://www.kde.org/
@@ -40,7 +40,7 @@ BuildRequires:	cmake(KF5Kirigami2)
 BuildRequires:	git-core
 BuildRequires:	flatpak-devel
 Requires:	%{name}-backend-kns
-Requires:	kirigami2
+Requires:	kirigami2 >= 5.38.0
 Requires:	qt5-qtquickcontrols2
 %rename	muon
 %rename %{_lib}muon-qml
