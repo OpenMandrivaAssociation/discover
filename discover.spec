@@ -40,7 +40,7 @@ BuildRequires:	cmake(KF5Kirigami2)
 BuildRequires:	git-core
 BuildRequires:	flatpak-devel
 Requires:	%{name}-backend-kns
-Requires:	kirigami2
+Requires:	kirigami2 >= 5.38.0
 Requires:	qt5-qtquickcontrols2
 %rename	muon
 %rename %{_lib}muon-qml
