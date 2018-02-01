@@ -2,7 +2,7 @@
 
 Summary:	Plasma 5 package manager
 Name:		discover
-Version:	5.11.5
+Version:	5.12.0
 Release:	1
 License:	GPLv2+
 Group:		Graphical desktop/KDE
@@ -132,6 +132,8 @@ Requires:	%{name}-backend-flatpak = %{EVRD}
 %{_datadir}/metainfo/org.kde.discovernotifier.appdata.xml
 %{_datadir}/kservices5/plasma-applet-org.kde.discovernotifier.desktop
 %{_libdir}/qt5/qml/org/kde/discovernotifier
+%{_datadir}/metainfo/org.kde.discover.flatpak.appdata.xml
+%{_datadir}/metainfo/org.kde.discover.packagekit.appdata.xml
 
 #----------------------------------------------------------------------------
 
