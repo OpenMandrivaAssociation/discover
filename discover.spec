@@ -103,6 +103,7 @@ PackageKit backend for %{name}.
 %package backend-flatpak
 Summary:	Flatpak backend for %{name}
 Group:		Graphical desktop/KDE
+Requires:	flatpak >= 0.8.7
 
 %description backend-flatpak
 Flatpak backend for %{name}.
