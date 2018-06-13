@@ -2,12 +2,13 @@
 
 Summary:	Plasma 5 package manager
 Name:		discover
-Version:	5.12.3
+Version:	5.13.0
 Release:	1
 License:	GPLv2+
 Group:		Graphical desktop/KDE
 Url:		https://www.kde.org/
 Source0:	http://download.kde.org/%{stable}/plasma/%{version}/%{name}-%{version}.tar.xz
+Patch0:		discover-5.13-flatpak-0.11.8.2.patch
 BuildRequires:	cmake(ECM)
 BuildRequires:	cmake(AppStreamQt) >= 0.10.4
 BuildRequires:	pkgconfig(packagekitqt5)
@@ -25,12 +26,14 @@ BuildRequires:	pkgconfig(qca2-qt5)
 BuildRequires:	cmake(KF5WidgetsAddons)
 BuildRequires:	cmake(KF5CoreAddons)
 BuildRequires:	cmake(KF5Crash)
+BuildRequires:	cmake(KF5DBusAddons)
 BuildRequires:	cmake(KF5Solid)
 BuildRequires:	cmake(KF5Archive)
 BuildRequires:	cmake(KF5TextWidgets)
 BuildRequires:	cmake(KF5Attica)
 BuildRequires:	cmake(KF5NewStuff)
 BuildRequires:	cmake(KF5I18n)
+BuildRequires:	cmake(KF5KIO)
 BuildRequires:	cmake(KF5Plasma)
 BuildRequires:	cmake(KF5Wallet)
 BuildRequires:	cmake(KF5Crash)
@@ -139,8 +142,7 @@ Requires:	%{name}-backend-flatpak = %{EVRD}
 #----------------------------------------------------------------------------
 
 %prep
-%setup -q
-%apply_patches
+%autosetup -p1
 %cmake_kde5 -DCMAKE_SKIP_RPATH:BOOL=OFF
 
 %build
