@@ -2,13 +2,12 @@
 
 Summary:	Plasma 5 package manager
 Name:		discover
-Version:	5.13.0
+Version:	5.13.1
 Release:	1
 License:	GPLv2+
 Group:		Graphical desktop/KDE
 Url:		https://www.kde.org/
 Source0:	http://download.kde.org/%{stable}/plasma/%{version}/%{name}-%{version}.tar.xz
-Patch0:		discover-5.13-flatpak-0.11.8.2.patch
 BuildRequires:	cmake(ECM)
 BuildRequires:	cmake(AppStreamQt) >= 0.10.4
 BuildRequires:	pkgconfig(packagekitqt5)
