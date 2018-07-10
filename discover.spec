@@ -2,14 +2,15 @@
 
 Summary:	Plasma 5 package manager
 Name:		discover
-Version:	5.10.5
-Release:	2
+Version:	5.12.6
+Release:	1
 License:	GPLv2+
 Group:		Graphical desktop/KDE
 Url:		https://www.kde.org/
 Source0:	http://download.kde.org/%{stable}/plasma/%{version}/%{name}-%{version}.tar.xz
 BuildRequires:	cmake(ECM)
-BuildRequires:	cmake(AppStreamQt) >= 0.10.4
+BuildRequires:	cmake(AppStreamQt)
+BuildRequires:	appstream-qt5-devel >= 0.11.1
 BuildRequires:	pkgconfig(packagekitqt5)
 BuildRequires:	pkgconfig(Qt5Widgets)
 BuildRequires:	pkgconfig(Qt5Test)
@@ -64,7 +65,6 @@ Plasma 5 package manager.
 %{_libdir}/libexec/kf5/discover/runservice
 %{_libdir}/plasma-discover/libDiscoverCommon.so
 %{_libdir}/plasma-discover/libDiscoverNotifiers.so
-%{_libdir}/qt5/qml/org/kde/discover
 %{_iconsdir}/hicolor/*/apps/plasmadiscover.*
 %{_datadir}/kxmlgui5/plasmadiscover/plasmadiscoverui.rc
 %{_datadir}/knotifications5/discoverabstractnotifier.notifyrc
@@ -104,6 +104,7 @@ PackageKit backend for %{name}.
 %package backend-flatpak
 Summary:	Flatpak backend for %{name}
 Group:		Graphical desktop/KDE
+Requires:	flatpak >= 0.8.7
 
 %description backend-flatpak
 Flatpak backend for %{name}.
@@ -133,6 +134,8 @@ Requires:	%{name}-backend-flatpak = %{EVRD}
 %{_datadir}/metainfo/org.kde.discovernotifier.appdata.xml
 %{_datadir}/kservices5/plasma-applet-org.kde.discovernotifier.desktop
 %{_libdir}/qt5/qml/org/kde/discovernotifier
+%{_datadir}/metainfo/org.kde.discover.flatpak.appdata.xml
+%{_datadir}/metainfo/org.kde.discover.packagekit.appdata.xml
 
 #----------------------------------------------------------------------------
 
