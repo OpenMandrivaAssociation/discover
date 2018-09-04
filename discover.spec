@@ -2,7 +2,7 @@
 
 Summary:	Plasma 5 package manager
 Name:		discover
-Version:	5.13.4
+Version:	5.13.5
 Release:	1
 License:	GPLv2+
 Group:		Graphical desktop/KDE
