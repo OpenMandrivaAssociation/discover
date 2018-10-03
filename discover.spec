@@ -3,7 +3,7 @@
 Summary:	Plasma 5 package manager
 Name:		discover
 Version:	5.13.90
-Release:	1
+Release:	2
 License:	GPLv2+
 Group:		Graphical desktop/KDE
 Url:		https://www.kde.org/
@@ -41,7 +41,9 @@ BuildRequires:	cmake(KF5Declarative)
 BuildRequires:	cmake(KF5ItemModels)
 BuildRequires:	cmake(KF5Kirigami2)
 BuildRequires:	git-core
-BuildRequires:	flatpak-devel
+BuildRequires:	pkgconfig(flatpak)
+BuildRequires:	cmake(Snappy)
+BuildRequires:	pkgconfig(fwup)
 Requires:	%{name}-backend-kns
 Requires:	kirigami2 >= 5.38.0
 Requires:	qt5-qtquickcontrols2
@@ -53,6 +55,9 @@ Obsoletes:	%{mklibname MuonCommon 5} < 5.5.0
 Obsoletes:	%{mklibname MuonNotifiers 5} < 5.5.0
 Obsoletes:	%{mklibname DiscoverNotifiers 5} < 5.6.0
 Obsoletes:	%{mklibname DiscoverCommon 5} < 5.6.0
+Recommends:	%{name}-backend-kns
+Recommends:	%{name}-backend-packagekit
+Recommends:	%{name}-backend-flatpak
 
 %description
 Plasma 5 package manager.
