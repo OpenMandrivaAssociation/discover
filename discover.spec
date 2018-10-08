@@ -43,7 +43,9 @@ BuildRequires:	cmake(KF5Kirigami2)
 BuildRequires:	git-core
 BuildRequires:	pkgconfig(flatpak)
 BuildRequires:	cmake(Snappy)
+%ifarch %{ix86} %{x86_64}
 BuildRequires:	pkgconfig(fwup)
+%endif
 Requires:	%{name}-backend-kns
 Requires:	kirigami2 >= 5.38.0
 Requires:	qt5-qtquickcontrols2
