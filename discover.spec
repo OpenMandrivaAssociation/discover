@@ -3,7 +3,7 @@
 Summary:	Plasma 5 package manager
 Name:		discover
 Version:	5.14.0
-Release:	1
+Release:	2
 License:	GPLv2+
 Group:		Graphical desktop/KDE
 Url:		https://www.kde.org/
@@ -44,7 +44,7 @@ BuildRequires:	git-core
 BuildRequires:	pkgconfig(flatpak)
 BuildRequires:	cmake(Snappy)
 %ifarch %{ix86} %{x86_64}
-BuildRequires:	pkgconfig(fwup)
+BuildRequires:	pkgconfig(fwupd)
 %endif
 Requires:	%{name}-backend-kns
 Requires:	kirigami2 >= 5.38.0
