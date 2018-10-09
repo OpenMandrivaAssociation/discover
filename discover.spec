@@ -57,7 +57,6 @@ Obsoletes:	%{mklibname MuonCommon 5} < 5.5.0
 Obsoletes:	%{mklibname MuonNotifiers 5} < 5.5.0
 Obsoletes:	%{mklibname DiscoverNotifiers 5} < 5.6.0
 Obsoletes:	%{mklibname DiscoverCommon 5} < 5.6.0
-Recommends:	%{name}-backend-kns
 Recommends:	%{name}-backend-packagekit
 Recommends:	%{name}-backend-flatpak
 
