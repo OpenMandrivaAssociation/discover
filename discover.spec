@@ -102,7 +102,8 @@ KNewStuff backend for %{name}.
 Summary:	PackageKit backend for %{name}
 Group:		Graphical desktop/KDE
 %rename	muon-backend-packagekit
-
+Requires:	packagekit
+  
 %description backend-packagekit
 PackageKit backend for %{name}.
 
