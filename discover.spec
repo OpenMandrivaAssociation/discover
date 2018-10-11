@@ -43,7 +43,7 @@ BuildRequires:	cmake(KF5Kirigami2)
 BuildRequires:	git-core
 BuildRequires:	pkgconfig(flatpak)
 BuildRequires:	cmake(Snappy)
-%ifarch %{ix86} %{x86_64}
+%ifarch %{x86_64} %{ix86} aarch64
 BuildRequires:	pkgconfig(fwupd)
 %endif
 Requires:	%{name}-backend-kns
