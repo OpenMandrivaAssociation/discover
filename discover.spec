@@ -59,6 +59,9 @@ Obsoletes:	%{mklibname DiscoverNotifiers 5} < 5.6.0
 Obsoletes:	%{mklibname DiscoverCommon 5} < 5.6.0
 Recommends:	%{name}-backend-packagekit
 Recommends:	%{name}-backend-flatpak
+%ifarch %{x86_64} %{ix86} aarch64
+Recommends:	%{name}-backend-fwupd
+%endif
 
 %description
 Plasma 5 package manager.
@@ -125,6 +128,18 @@ Flatpak backend for %{name}.
 
 #----------------------------------------------------------------------------
 
+%package backend-fwupd
+Summary:	Fwupd backend for %{name}
+Group:		Graphical desktop/KDE
+Requires:	fwupd >= 1.1.2
+
+%description backend-fwupd
+Fwupd backend for %{name}.
+
+%files backend-fwupd
+%{_libdir}/qt5/plugins/discover/fwupd-backend.so
+
+#----------------------------------------------------------------------------
 %package notifier
 Summary:	%{name} notifier
 Group:		Graphical desktop/KDE
