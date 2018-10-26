@@ -42,8 +42,7 @@ BuildRequires:	cmake(KF5ItemModels)
 BuildRequires:	cmake(KF5Kirigami2)
 BuildRequires:	git-core
 BuildRequires:	pkgconfig(flatpak)
-BuildRequires:	cmake(Snappy)
-%ifarch %{x86_64} %{ix86} aarch64
+%ifarch %{x86_64} %{ix86}
 BuildRequires:	pkgconfig(fwupd)
 %endif
 Requires:	%{name}-backend-kns
@@ -59,7 +58,7 @@ Obsoletes:	%{mklibname DiscoverNotifiers 5} < 5.6.0
 Obsoletes:	%{mklibname DiscoverCommon 5} < 5.6.0
 Recommends:	%{name}-backend-packagekit
 Recommends:	%{name}-backend-flatpak
-%ifarch %{x86_64} %{ix86} aarch64
+%ifarch %{x86_64} %{ix86}
 Recommends:	%{name}-backend-fwupd
 %endif
 
@@ -129,6 +128,7 @@ Flatpak backend for %{name}.
 
 #----------------------------------------------------------------------------
 
+%ifarch %{x86_64} %{ix86}
 %package backend-fwupd
 Summary:	Fwupd backend for %{name}
 Group:		Graphical desktop/KDE
@@ -139,6 +139,7 @@ Fwupd backend for %{name}.
 
 %files backend-fwupd
 %{_libdir}/qt5/plugins/discover/fwupd-backend.so
+%endif
 
 #----------------------------------------------------------------------------
 %package notifier
