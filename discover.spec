@@ -2,7 +2,7 @@
 
 Summary:	Plasma 5 package manager
 Name:		discover
-Version:	5.14.1
+Version:	5.14.2
 Release:	1
 License:	GPLv2+
 Group:		Graphical desktop/KDE
@@ -48,7 +48,7 @@ BuildRequires:	pkgconfig(fwupd)
 Requires:	%{name}-backend-kns
 Requires:	kirigami2 >= 5.38.0
 Requires:	qt5-qtquickcontrols2
-%rename	muon
+%rename muon
 %rename %{_lib}muon-qml
 %rename libmuon-qml
 %rename libmuon-common
