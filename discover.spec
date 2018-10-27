@@ -125,6 +125,7 @@ Flatpak backend for %{name}.
 %{_libdir}/qt5/plugins/discover/flatpak-backend.so
 %{_libdir}/qt5/plugins/discover-notifier/FlatpakNotifier.so
 %{_datadir}/libdiscover/categories/flatpak-backend-categories.xml
+%{_iconsdir}/hicolor/scalable/apps/flatpak-discover.svgz
 
 #----------------------------------------------------------------------------
 
