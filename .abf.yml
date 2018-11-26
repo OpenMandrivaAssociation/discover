@@ -1,4 +1,5 @@
 removed_sources:
   discover-5.12.3.tar.xz: ecef919300d949a32d0fae0786d1e385f1f22895
-sources:
   discover-5.12.6.tar.xz: 7617cefa052c432d9f21c777b749d35689537562
+sources:
+  discover-5.12.7.tar.xz: b2d8875042fd6c96821dca4a2d27d58d3b567945
