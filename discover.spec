@@ -3,7 +3,7 @@
 Summary:	Plasma 5 package manager
 Name:		discover
 Version:	5.15.4
-Release:	1
+Release:	2
 License:	GPLv2+
 Group:		Graphical desktop/KDE
 Url:		https://www.kde.org/
@@ -56,10 +56,10 @@ Obsoletes:	%{mklibname MuonCommon 5} < 5.5.0
 Obsoletes:	%{mklibname MuonNotifiers 5} < 5.5.0
 Obsoletes:	%{mklibname DiscoverNotifiers 5} < 5.6.0
 Obsoletes:	%{mklibname DiscoverCommon 5} < 5.6.0
-Recommends:	%{name}-backend-packagekit
+#Suggests:	%{name}-backend-packagekit
 Recommends:	%{name}-backend-flatpak
 %ifarch %{x86_64} %{ix86}
-Recommends:	%{name}-backend-fwupd
+Requires:	%{name}-backend-fwupd
 %endif
 
 %description
@@ -86,7 +86,7 @@ Plasma 5 package manager.
 %package backend-kns
 Summary:	KNewStuff backend for %{name}
 Group:		Graphical desktop/KDE
-%rename	muon-backend-kns
+%rename muon-backend-kns
 
 %description backend-kns
 KNewStuff backend for %{name}.
@@ -100,9 +100,9 @@ KNewStuff backend for %{name}.
 %package backend-packagekit
 Summary:	PackageKit backend for %{name}
 Group:		Graphical desktop/KDE
-%rename	muon-backend-packagekit
+%rename muon-backend-packagekit
 Requires:	packagekit
-  
+
 %description backend-packagekit
 PackageKit backend for %{name}.
 
@@ -110,6 +110,7 @@ PackageKit backend for %{name}.
 %{_libdir}/qt5/plugins/discover/packagekit-backend.so
 %{_libdir}/qt5/plugins/discover-notifier/DiscoverPackageKitNotifier.so
 %{_datadir}/libdiscover/categories/packagekit-backend-categories.xml
+%{_datadir}/metainfo/org.kde.discover.packagekit.appdata.xml
 
 #----------------------------------------------------------------------------
 
@@ -126,6 +127,7 @@ Flatpak backend for %{name}.
 %{_libdir}/qt5/plugins/discover-notifier/FlatpakNotifier.so
 %{_datadir}/libdiscover/categories/flatpak-backend-categories.xml
 %{_iconsdir}/hicolor/scalable/apps/flatpak-discover.svg
+%{_datadir}/metainfo/org.kde.discover.flatpak.appdata.xml
 
 #----------------------------------------------------------------------------
 
@@ -147,10 +149,8 @@ Fwupd backend for %{name}.
 Summary:	%{name} notifier
 Group:		Graphical desktop/KDE
 Requires:	%{name} = %{EVRD}
-%rename	plasma5-applet-muonnotifier
-%rename	muon-notifier
-Requires:	%{name}-backend-packagekit = %{EVRD}
-Requires:	%{name}-backend-flatpak = %{EVRD}
+%rename plasma5-applet-muonnotifier
+%rename muon-notifier
 
 %description notifier
 %{name} notifier plasmoid.
@@ -161,13 +161,14 @@ Requires:	%{name}-backend-flatpak = %{EVRD}
 %{_datadir}/metainfo/org.kde.discovernotifier.appdata.xml
 %{_datadir}/kservices5/plasma-applet-org.kde.discovernotifier.desktop
 %{_libdir}/qt5/qml/org/kde/discovernotifier
-%{_datadir}/metainfo/org.kde.discover.flatpak.appdata.xml
-%{_datadir}/metainfo/org.kde.discover.packagekit.appdata.xml
 
 #----------------------------------------------------------------------------
 
 %prep
 %autosetup -p1
+# disable update notifier applet by default, since OMV uses dnfdragora
+sed -i -e 's|X-KDE-PluginInfo-EnabledByDefault=.*|X-KDE-PluginInfo-EnabledByDefault=false|g' notifier/plasmoid/metadata.desktop
+
 %cmake_kde5 -DCMAKE_SKIP_RPATH:BOOL=OFF
 
 %build
