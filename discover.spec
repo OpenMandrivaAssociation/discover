@@ -3,7 +3,7 @@
 Summary:	Plasma 5 package manager
 Name:		discover
 Version:	5.15.5
-Release:	1
+Release:	2
 License:	GPLv2+
 Group:		Graphical desktop/KDE
 Url:		https://www.kde.org/
@@ -102,6 +102,7 @@ Summary:	PackageKit backend for %{name}
 Group:		Graphical desktop/KDE
 %rename muon-backend-packagekit
 Requires:	packagekit
+Requires:	dnf-plugins-core
 
 %description backend-packagekit
 PackageKit backend for %{name}.
