@@ -3,7 +3,7 @@
 Summary:	Plasma 5 package manager
 Name:		discover
 Version:	5.15.5
-Release:	2
+Release:	3
 License:	GPLv2+
 Group:		Graphical desktop/KDE
 Url:		https://www.kde.org/
@@ -57,9 +57,9 @@ Obsoletes:	%{mklibname MuonNotifiers 5} < 5.5.0
 Obsoletes:	%{mklibname DiscoverNotifiers 5} < 5.6.0
 Obsoletes:	%{mklibname DiscoverCommon 5} < 5.6.0
 #Suggests:	%{name}-backend-packagekit
-Recommends:	%{name}-backend-flatpak
+Suggests:	%{name}-backend-flatpak
 %ifarch %{x86_64} %{ix86}
-Requires:	%{name}-backend-fwupd
+Suggests:	%{name}-backend-fwupd
 %endif
 
 %description
