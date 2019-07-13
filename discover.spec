@@ -2,8 +2,8 @@
 
 Summary:	Plasma 5 package manager
 Name:		discover
-Version:	5.15.5
-Release:	3
+Version:	5.16.3
+Release:	1
 License:	GPLv2+
 Group:		Graphical desktop/KDE
 Url:		https://www.kde.org/
@@ -92,7 +92,7 @@ Group:		Graphical desktop/KDE
 KNewStuff backend for %{name}.
 
 %files backend-kns
-%{_sysconfdir}/xdg/discover_ktexteditor_codesnippets_core.knsrc
+%{_datadir}/knsrcfiles/discover_ktexteditor_codesnippets_core.knsrc
 %{_libdir}/qt5/plugins/discover/kns-backend.so
 
 #----------------------------------------------------------------------------
