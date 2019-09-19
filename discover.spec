@@ -2,7 +2,7 @@
 
 Summary:	Plasma 5 package manager
 Name:		discover
-Version:	5.16.5
+Version:	5.16.90
 Release:	1
 License:	GPLv2+
 Group:		Graphical desktop/KDE
@@ -66,7 +66,7 @@ Suggests:	%{name}-backend-fwupd
 Plasma 5 package manager.
 
 %files -f all.lang
-%{_sysconfdir}/xdg/discover.categories
+%{_datadir}/qlogging-categories5/discover.categories
 %dir %{_libdir}/plasma-discover
 %dir %{_datadir}/kxmlgui5/plasmadiscover
 %dir %{_libdir}/libexec/kf5/discover
@@ -157,19 +157,13 @@ Requires:	%{name} = %{EVRD}
 %{name} notifier plasmoid.
 
 %files notifier
-%dir %{_datadir}/plasma/plasmoids/org.kde.discovernotifier
-%{_datadir}/plasma/plasmoids/org.kde.discovernotifier/*
-%{_datadir}/metainfo/org.kde.discovernotifier.appdata.xml
-%{_datadir}/kservices5/plasma-applet-org.kde.discovernotifier.desktop
-%{_libdir}/qt5/qml/org/kde/discovernotifier
+%{_sysconfdir}/xdg/autostart/org.kde.discover.notifier.desktop
+%{_libdir}/libexec/DiscoverNotifier
 
 #----------------------------------------------------------------------------
 
 %prep
 %autosetup -p1
-# disable update notifier applet by default, since OMV uses dnfdragora
-sed -i -e 's|X-KDE-PluginInfo-EnabledByDefault=.*|X-KDE-PluginInfo-EnabledByDefault=false|g' notifier/plasmoid/metadata.desktop
-
 %cmake_kde5 -DCMAKE_SKIP_RPATH:BOOL=OFF
 
 %build
