@@ -3,7 +3,7 @@
 Summary:	Plasma 5 package manager
 Name:		discover
 Version:	5.17.5
-Release:	1
+Release:	2
 License:	GPLv2+
 Group:		Graphical desktop/KDE
 Url:		https://www.kde.org/
@@ -32,6 +32,7 @@ BuildRequires:	cmake(KF5TextWidgets)
 BuildRequires:	cmake(KF5Attica)
 BuildRequires:	cmake(KF5NewStuff)
 BuildRequires:	cmake(KF5Notifications)
+BuildRequires:	cmake(KF5Package)
 BuildRequires:	cmake(KF5I18n)
 BuildRequires:	cmake(KF5KIO)
 BuildRequires:	cmake(KF5Plasma)
@@ -40,8 +41,18 @@ BuildRequires:	cmake(KF5Crash)
 BuildRequires:	cmake(KF5Declarative)
 BuildRequires:	cmake(KF5ItemModels)
 BuildRequires:	cmake(KF5Kirigami2)
+BuildRequires:	cmake(KF5Service)
+BuildRequires:	cmake(KF5Bookmarks)
+BuildRequires:	cmake(KF5Completion)
+BuildRequires:	cmake(KF5ItemViews)
+BuildRequires:	cmake(KF5JobWidgets)
+BuildRequires:	cmake(KF5Solid)
+BuildRequires:	cmake(KF5Auth)
+BuildRequires:	cmake(KF5Codecs)
+BuildRequires:	cmake(KF5ConfigWidgets)
 BuildRequires:	git-core
 BuildRequires:	pkgconfig(flatpak)
+BuildRequires:	pkgconfig(libmarkdown)
 %ifarch %{x86_64} %{ix86}
 BuildRequires:	pkgconfig(fwupd)
 %endif
