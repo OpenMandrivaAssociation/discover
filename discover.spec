@@ -9,6 +9,7 @@ Group:		Graphical desktop/KDE
 Url:		https://www.kde.org/
 Source0:	http://download.kde.org/%{stable}/plasma/%{version}/%{name}-%{version}.tar.xz
 Patch0:		discover-5.17.5-default-sort-by-name.patch
+Patch1:		discover-5.18.3-qt-5.15.patch
 BuildRequires:	cmake(ECM)
 BuildRequires:	cmake(AppStreamQt) >= 0.10.4
 BuildRequires:	pkgconfig(packagekitqt5)

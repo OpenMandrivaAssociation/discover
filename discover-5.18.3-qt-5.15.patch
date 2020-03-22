@@ -1,0 +1,30 @@
+diff -up discover-5.18.3/libdiscover/appstream/OdrsReviewsBackend.cpp.omv~ discover-5.18.3/libdiscover/appstream/OdrsReviewsBackend.cpp
+--- discover-5.18.3/libdiscover/appstream/OdrsReviewsBackend.cpp.omv~	2020-03-22 23:50:38.807857082 +0100
++++ discover-5.18.3/libdiscover/appstream/OdrsReviewsBackend.cpp	2020-03-22 23:51:41.446914088 +0100
+@@ -142,7 +142,7 @@ void OdrsReviewsBackend::reviewsFetched(
+     QNetworkReply* reply = qobject_cast<QNetworkReply*>(sender());
+     QScopedPointer<QNetworkReply, QScopedPointerDeleteLater> replyPtr(reply);
+     const QByteArray data = reply->readAll();
+-#if (QT_VERSION < QT_VERSION_CHECK(5, 15, 0))
++#if (QT_VERSION >= QT_VERSION_CHECK(5, 15, 0))
+     const auto networkError = reply->error();
+ #else
+     const auto networkError = reply->networkError();
+@@ -189,7 +189,7 @@ void OdrsReviewsBackend::submitUsefulnes
+ void OdrsReviewsBackend::usefulnessSubmitted()
+ {
+     QNetworkReply* reply = qobject_cast<QNetworkReply*>(sender());
+-#if (QT_VERSION < QT_VERSION_CHECK(5, 15, 0))
++#if (QT_VERSION >= QT_VERSION_CHECK(5, 15, 0))
+     const auto networkError = reply->error();
+ #else
+     const auto networkError = reply->networkError();
+@@ -239,7 +239,7 @@ void OdrsReviewsBackend::submitReview(Ab
+ 
+ void OdrsReviewsBackend::reviewSubmitted(QNetworkReply *reply)
+ {
+-#if (QT_VERSION < QT_VERSION_CHECK(5, 15, 0))
++#if (QT_VERSION >= QT_VERSION_CHECK(5, 15, 0))
+     const auto networkError = reply->error();
+ #else
+     const auto networkError = reply->networkError();
