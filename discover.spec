@@ -2,12 +2,12 @@
 
 Summary:	Plasma 5 package manager
 Name:		discover
-Version:	5.18.3
-Release:	2
+Version:	5.18.4.1
+Release:	1
 License:	GPLv2+
 Group:		Graphical desktop/KDE
 Url:		https://www.kde.org/
-Source0:	http://download.kde.org/%{stable}/plasma/%{version}/%{name}-%{version}.tar.xz
+Source0:	http://download.kde.org/%{stable}/plasma/%(echo %{version} |cut -d. -f1-3)/%{name}-%{version}.tar.xz
 Patch0:		discover-5.17.5-default-sort-by-name.patch
 Patch1:		discover-5.18.3-qt-5.15.patch
 BuildRequires:	cmake(ECM)
