@@ -3,11 +3,12 @@
 Summary:	Plasma 5 package manager
 Name:		discover
 Version:	5.20.4
-Release:	2
+Release:	3
 License:	GPLv2+
 Group:		Graphical desktop/KDE
 Url:		https://www.kde.org/
 Source0:	http://download.kde.org/%{stable}/plasma/%(echo %{version} |cut -d. -f1-3)/%{name}-%{version}.tar.xz
+Source1:	discover-wrapper
 Patch0:		discover-5.17.5-default-sort-by-name.patch
 BuildRequires:	cmake(ECM)
 BuildRequires:	cmake(AppStreamQt) >= 0.10.4
@@ -55,8 +56,9 @@ BuildRequires:	cmake(KUserFeedback)
 BuildRequires:	git-core
 BuildRequires:	pkgconfig(flatpak)
 BuildRequires:	pkgconfig(libmarkdown)
-%ifarch %{x86_64} %{ix86}
+%ifarch %{x86_64} %{ix86} %{aarch64}
 BuildRequires:	pkgconfig(fwupd)
+Suggests:	%{name}-backend-fwupd
 %endif
 Requires:	%{name}-backend-kns
 Requires:	kirigami2 >= 5.38.0
@@ -69,11 +71,8 @@ Obsoletes:	%{mklibname MuonCommon 5} < 5.5.0
 Obsoletes:	%{mklibname MuonNotifiers 5} < 5.5.0
 Obsoletes:	%{mklibname DiscoverNotifiers 5} < 5.6.0
 Obsoletes:	%{mklibname DiscoverCommon 5} < 5.6.0
-#Suggests:	%{name}-backend-packagekit
+Suggests:	%{name}-backend-packagekit
 Suggests:	%{name}-backend-flatpak
-%ifarch %{x86_64} %{ix86}
-Suggests:	%{name}-backend-fwupd
-%endif
 
 %description
 Plasma 5 package manager.
@@ -85,6 +84,7 @@ Plasma 5 package manager.
 %dir %{_libdir}/libexec/kf5/discover
 %{_datadir}/applications/*.desktop
 %{_datadir}/discover
+%{_bindir}/discover
 %{_bindir}/plasma-discover
 %{_bindir}/plasma-discover-update
 %{_libdir}/libexec/kf5/discover/runservice
@@ -146,7 +146,7 @@ Flatpak backend for %{name}.
 
 #----------------------------------------------------------------------------
 
-%ifarch %{x86_64} %{ix86}
+%ifarch %{x86_64} %{ix86} %{aarch64}
 %package backend-fwupd
 Summary:	Fwupd backend for %{name}
 Group:		Graphical desktop/KDE
@@ -185,6 +185,9 @@ Requires:	%{name} = %{EVRD}
 
 %install
 %ninja_install -C build
+install -c -m 755 %{S:1} %{buildroot}%{_bindir}/discover
+# Launch discover through the wrapper
+sed -i -e 's,Exec=plasma-discover,Exec=discover,g' %{buildroot}%{_datadir}/applications/org.kde.discover.desktop
 
 %find_lang libdiscover || touch libdiscover.lang
 %find_lang plasma-discover || touch plasma-discover.lang
