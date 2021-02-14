@@ -2,7 +2,7 @@
 
 Summary:	Plasma 5 package manager
 Name:		discover
-Version:	5.20.5
+Version:	5.21.0
 Release:	1
 License:	GPLv2+
 Group:		Graphical desktop/KDE
@@ -175,6 +175,20 @@ Requires:	%{name} = %{EVRD}
 %{_libdir}/libexec/DiscoverNotifier
 
 #----------------------------------------------------------------------------
+%package updater-kcm
+Summary:	KDE Control Center module for installing updates
+Group:		Graphical desktop/KDE
+Requires:	%{name} = %{EVRD}
+
+%description updater-kcm
+KDE Control Center module for installing updates
+
+%files updater-kcm
+%{_libdir}/qt5/plugins/kcms/kcm_updates.so
+%{_datadir}/kpackage/kcms/kcm_updates
+%{_datadir}/kservices5/kcm_updates.desktop
+
+#----------------------------------------------------------------------------
 
 %prep
 %autosetup -p1
@@ -194,4 +208,5 @@ sed -i -e 's,Exec=plasma-discover,Exec=discover,g' %{buildroot}%{_datadir}/appli
 %find_lang plasma-discover-notifier || touch plasma-discover-notifier.lang
 %find_lang plasma-discover-updater || touch plasma-discover-updater.lang
 %find_lang plasma_applet_org.kde.discovernotifier || touch plasma_applet_org.kde.discovernotifier.lang
+%find_lang kcm_updates || touch kcm_updates.lang
 cat *.lang > all.lang
