@@ -1,0 +1,15 @@
+diff -up discover-5.21.4/libdiscover/backends/FlatpakBackend/FlatpakTransactionThread.h.omv~ discover-5.21.4/libdiscover/backends/FlatpakBackend/FlatpakTransactionThread.h
+--- discover-5.21.4/libdiscover/backends/FlatpakBackend/FlatpakTransactionThread.h.omv~	2021-04-06 17:19:18.683877384 +0200
++++ discover-5.21.4/libdiscover/backends/FlatpakBackend/FlatpakTransactionThread.h	2021-04-06 17:19:21.703864905 +0200
+@@ -7,11 +7,9 @@
+ #ifndef FLATPAKTRANSACTIONTHREAD_H
+ #define FLATPAKTRANSACTIONTHREAD_H
+ 
+-extern "C" {
+ #include <flatpak.h>
+ #include <gio/gio.h>
+ #include <glib.h>
+-}
+ 
+ #include <Transaction/Transaction.h>
+ #include <QThread>
