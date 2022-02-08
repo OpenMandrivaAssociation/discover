@@ -2,8 +2,8 @@
 
 Summary:	Plasma 5 package manager
 Name:		discover
-Version:	5.23.5
-Release:	2
+Version:	5.24.0
+Release:	1
 License:	GPLv2+
 Group:		Graphical desktop/KDE
 Url:		https://www.kde.org/
@@ -186,9 +186,8 @@ Requires:	%{name} = %{EVRD}
 KDE Control Center module for installing updates
 
 %files updater-kcm
-%{_libdir}/qt5/plugins/kcms/kcm_updates.so
 %{_datadir}/kpackage/kcms/kcm_updates
-%{_datadir}/kservices5/kcm_updates.desktop
+%{_libdir}/qt5/plugins/plasma/kcms/systemsettings/kcm_updates.so
 
 #----------------------------------------------------------------------------
 
