@@ -1,0 +1,12 @@
+diff -up discover-5.24.2/libdiscover/backends/FlatpakBackend/FlatpakBackend.cpp.omv~ discover-5.24.2/libdiscover/backends/FlatpakBackend/FlatpakBackend.cpp
+--- discover-5.24.2/libdiscover/backends/FlatpakBackend/FlatpakBackend.cpp.omv~	2022-02-22 20:56:14.057787250 +0100
++++ discover-5.24.2/libdiscover/backends/FlatpakBackend/FlatpakBackend.cpp	2022-02-22 20:56:33.159850600 +0100
+@@ -725,7 +725,7 @@ void FlatpakBackend::addAppFromFlatpakRe
+     auto resource = new FlatpakResource(asComponent, preferredInstallation(), this);
+     resource->setFlatpakFileType(FlatpakResource::FileFlatpakRef);
+     resource->setResourceFile(url);
+-    resource->setResourceLocation(refurl);
++    resource->setResourceLocation(QUrl(refurl));
+     resource->setOrigin(remoteName);
+     resource->setFlatpakName(name);
+     resource->setArch(flatpak_get_default_arch());
