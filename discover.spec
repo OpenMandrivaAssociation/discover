@@ -2,8 +2,8 @@
 
 Summary:	Plasma 5 package manager
 Name:		discover
-Version:	5.25.5
-Release:	2
+Version:	5.25.90
+Release:	1
 License:	GPLv2+
 Group:		Graphical desktop/KDE
 Url:		https://www.kde.org/
@@ -86,7 +86,6 @@ Plasma 5 package manager.
 %dir %{_datadir}/kxmlgui5/plasmadiscover
 %dir %{_libdir}/libexec/kf5/discover
 %{_datadir}/applications/*.desktop
-%{_datadir}/discover
 %{_bindir}/discover
 %{_bindir}/plasma-discover
 %{_bindir}/plasma-discover-update
