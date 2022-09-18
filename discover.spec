@@ -56,6 +56,7 @@ BuildRequires:	cmake(KF5Codecs)
 BuildRequires:	cmake(KF5ConfigWidgets)
 BuildRequires:	cmake(KF5KCMUtils)
 BuildRequires:	cmake(KF5IdleTime)
+BuildRequires:	cmake(KF5Purpose)
 BuildRequires:	cmake(KUserFeedback)
 BuildRequires:	git-core
 BuildRequires:	pkgconfig(flatpak)
