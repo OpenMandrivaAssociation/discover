@@ -3,13 +3,15 @@
 Summary:	Plasma 5 package manager
 Name:		discover
 Version:	5.27.0
-Release:	1
+Release:	2
 License:	GPLv2+
 Group:		Graphical desktop/KDE
 Url:		https://www.kde.org/
 Source0:	http://download.kde.org/%{stable}/plasma/%(echo %{version} |cut -d. -f1-3)/%{name}-%{version}.tar.xz
-Source1:	discover-wrapper
+Source1:	discoverrc
 Patch0:		discover-5.17.5-default-sort-by-name.patch
+# (tpg) always force refresh, periodic refresh set to 12h instead of 24h
+Patch1:		https://src.fedoraproject.org/rpms/plasma-discover/raw/rawhide/f/discover-5.21.4-pk_refresh_force.patch
 BuildRequires:	cmake(ECM)
 BuildRequires:	cmake(AppStreamQt) >= 0.10.4
 BuildRequires:	pkgconfig(packagekitqt5)
@@ -63,7 +65,7 @@ BuildRequires:	pkgconfig(flatpak)
 BuildRequires:	pkgconfig(libmarkdown)
 %ifarch %{x86_64} %{ix86} %{aarch64}
 BuildRequires:	pkgconfig(fwupd)
-Suggests:	%{name}-backend-fwupd
+Recommends:	%{name}-backend-fwupd
 %endif
 Requires:	%{name}-backend-kns
 Requires:	kirigami2 >= 5.38.0
@@ -76,8 +78,8 @@ Obsoletes:	%{mklibname MuonCommon 5} < 5.5.0
 Obsoletes:	%{mklibname MuonNotifiers 5} < 5.5.0
 Obsoletes:	%{mklibname DiscoverNotifiers 5} < 5.6.0
 Obsoletes:	%{mklibname DiscoverCommon 5} < 5.6.0
-Suggests:	%{name}-backend-packagekit
-Suggests:	%{name}-backend-flatpak
+Recommends:	%{name}-backend-packagekit
+Recommends:	%{name}-backend-flatpak
 
 %description
 Plasma 5 package manager.
@@ -87,7 +89,7 @@ Plasma 5 package manager.
 %dir %{_libdir}/plasma-discover
 %dir %{_datadir}/kxmlgui5/plasmadiscover
 %{_datadir}/applications/*.desktop
-%{_bindir}/discover
+%{_sysconfdir}/xdg/discoverrc
 %{_bindir}/plasma-discover
 %{_bindir}/plasma-discover-update
 %{_libdir}/plasma-discover/libDiscoverCommon.so
@@ -134,6 +136,7 @@ PackageKit backend for %{name}.
 Summary:	Flatpak backend for %{name}
 Group:		Graphical desktop/KDE
 Requires:	flatpak >= 0.8.7
+Requires:	(flatpak-kcm if plasma-systemsettings)
 
 %description backend-flatpak
 Flatpak backend for %{name}.
@@ -199,9 +202,7 @@ KDE Control Center module for installing updates
 
 %install
 %ninja_install -C build
-install -c -m 755 %{S:1} %{buildroot}%{_bindir}/discover
-# Launch discover through the wrapper
-sed -i -e 's,Exec=plasma-discover,Exec=discover,g' %{buildroot}%{_datadir}/applications/org.kde.discover.desktop
+install -m 644 -p -D %{SOURCE1} %{buildroot}%{_sysconfdir}/xdg/discoverrc
 
 %find_lang libdiscover || touch libdiscover.lang
 %find_lang plasma-discover || touch plasma-discover.lang
