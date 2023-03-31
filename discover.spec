@@ -1,17 +1,19 @@
-%define stable %([ "`echo %{version} |cut -d. -f3`" -ge 70 ] && echo -n un; echo -n stable)
+%define stable %([ "$(echo %{version} |cut -d. -f3)" -ge 70 ] && echo -n un; echo -n stable)
 
 Summary:	Plasma 5 package manager
 Name:		discover
 Version:	5.27.3
-Release:	1
+Release:	2
 License:	GPLv2+
 Group:		Graphical desktop/KDE
 Url:		https://www.kde.org/
 Source0:	http://download.kde.org/%{stable}/plasma/%(echo %{version} |cut -d. -f1-3)/%{name}-%{version}.tar.xz
 Source1:	discoverrc
 Patch0:		discover-5.17.5-default-sort-by-name.patch
+# (tpg) upstream patches
+Patch1:	https://github.com/KDE/discover/commit/23eead2841c291f11f399fbd605e0a53b62d1a89.patch
 # (tpg) always force refresh, periodic refresh set to 12h instead of 24h
-Patch1:		https://src.fedoraproject.org/rpms/plasma-discover/raw/rawhide/f/discover-5.21.4-pk_refresh_force.patch
+Patch2:		https://src.fedoraproject.org/rpms/plasma-discover/raw/rawhide/f/discover-5.21.4-pk_refresh_force.patch
 BuildRequires:	cmake(ECM)
 BuildRequires:	cmake(AppStreamQt) >= 0.10.4
 BuildRequires:	pkgconfig(packagekitqt5)
