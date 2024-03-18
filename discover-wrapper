@@ -22,4 +22,4 @@ while ps $kdialogPid &>/dev/null && ps $pkPid &>/dev/null && [ "`qdbus $dbusRef 
 done
 [ "`qdbus $dbusRef org.kde.kdialog.ProgressDialog.wasCancelled`" != "true" ] && kill $pkPid
 ps $kdialogPid &>/dev/null && qdbus $dbusRef close
-exec /usr/bin/plasma-discover "$@"
+exec /usr/bin/plasma-discover-main "$@"

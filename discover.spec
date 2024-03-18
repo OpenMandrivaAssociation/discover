@@ -3,12 +3,13 @@
 Summary:	Plasma 5 package manager
 Name:		discover
 Version:	5.27.11
-Release:	1
+Release:	2
 License:	GPLv2+
 Group:		Graphical desktop/KDE
 Url:		https://www.kde.org/
 Source0:	http://download.kde.org/%{stable}/plasma/%(echo %{version} |cut -d. -f1-3)/%{name}-%{version}.tar.xz
 Source1:	discoverrc
+Source10:	discover-wrapper
 Patch0:		discover-5.17.5-default-sort-by-name.patch
 # (tpg) always force refresh, periodic refresh set to 12h instead of 24h
 Patch2:		https://src.fedoraproject.org/rpms/plasma-discover/raw/rawhide/f/discover-5.21.4-pk_refresh_force.patch
@@ -92,6 +93,7 @@ Plasma 5 package manager.
 %{_datadir}/applications/*.desktop
 %{_sysconfdir}/xdg/discoverrc
 %{_bindir}/plasma-discover
+%{_bindir}/plasma-discover-main
 %{_bindir}/plasma-discover-update
 %{_libdir}/plasma-discover/libDiscoverCommon.so
 %{_libdir}/plasma-discover/libDiscoverNotifiers.so
@@ -204,6 +206,9 @@ KDE Control Center module for installing updates
 %install
 %ninja_install -C build
 install -m 644 -p -D %{SOURCE1} %{buildroot}%{_sysconfdir}/xdg/discoverrc
+
+mv %{buildroot}%{_bindir}/plasma-discover %{buildroot}%{_bindir}/plasma-discover-main
+install -m 755 -p -D %{S:10} %{buildroot}%{_bindir}/plasma-discover
 
 %find_lang libdiscover || touch libdiscover.lang
 %find_lang plasma-discover || touch plasma-discover.lang
