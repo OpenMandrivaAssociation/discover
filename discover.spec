@@ -14,7 +14,7 @@ Patch0:		discover-5.17.5-default-sort-by-name.patch
 # (tpg) always force refresh, periodic refresh set to 12h instead of 24h
 Patch2:		https://src.fedoraproject.org/rpms/plasma-discover/raw/rawhide/f/discover-5.21.4-pk_refresh_force.patch
 BuildRequires:	cmake(ECM)
-BuildRequires:	(cmake(AppStreamQt) >= 0.10.4 with cmake(AppStreamQt) < 1.0.0)
+BuildRequires:	cmake(AppStreamQt5) >= 1.0.3
 BuildRequires:	pkgconfig(packagekitqt5)
 BuildRequires:	pkgconfig(Qt5Widgets)
 BuildRequires:	pkgconfig(Qt5Test)
