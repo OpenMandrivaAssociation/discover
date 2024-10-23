@@ -3,7 +3,7 @@
 Summary:	Plasma 5 package manager
 Name:		discover
 Version:	5.27.11
-Release:	5
+Release:	6
 License:	GPLv2+
 Group:		Graphical desktop/KDE
 Url:		https://www.kde.org/
@@ -11,6 +11,7 @@ Source0:	http://download.kde.org/%{stable}/plasma/%(echo %{version} |cut -d. -f1
 Source1:	discoverrc
 Source10:	discover-wrapper
 Patch0:		discover-5.17.5-default-sort-by-name.patch
+Patch1:		discover-6.2.1-fwupd-2.x.patch
 # (tpg) always force refresh, periodic refresh set to 12h instead of 24h
 Patch2:		https://src.fedoraproject.org/rpms/plasma-discover/raw/rawhide/f/discover-5.21.4-pk_refresh_force.patch
 BuildRequires:	cmake(ECM)
