@@ -120,6 +120,8 @@ Plasma 6 package manager.
 Summary:	KNewStuff backend for %{name}
 Group:		Graphical desktop/KDE
 %rename muon-backend-kns
+# Renamed after 6.0 2025-05-03
+%rename plasma6-discover-backend-kns
 
 %description backend-kns
 KNewStuff backend for %{name}.
@@ -135,6 +137,8 @@ Group:		Graphical desktop/KDE
 %rename muon-backend-packagekit
 Requires:	packagekit
 Requires:	dnf-plugins-core
+# Renamed after 6.0 2025-05-03
+%rename plasma6-discover-backend-packagekit
 
 %description backend-packagekit
 PackageKit backend for %{name}.
@@ -153,6 +157,8 @@ Summary:	Flatpak backend for %{name}
 Group:		Graphical desktop/KDE
 Requires:	flatpak >= 0.8.7
 Requires:	(flatpak-kcm if plasma-systemsettings)
+# Renamed after 6.0 2025-05-03
+%rename plasma6-discover-backend-flatpak
 
 %description backend-flatpak
 Flatpak backend for %{name}.
@@ -171,6 +177,8 @@ Flatpak backend for %{name}.
 Summary:	Fwupd backend for %{name}
 Group:		Graphical desktop/KDE
 Requires:	fwupd >= 1.1.2
+# Renamed after 6.0 2025-05-03
+%rename plasma6-discover-backend-fwupd
 
 %description backend-fwupd
 Fwupd backend for %{name}.
@@ -184,6 +192,8 @@ Fwupd backend for %{name}.
 Summary:	%{name} notifier
 Group:		Graphical desktop/KDE
 Requires:	%{name} = %{EVRD}
+# Renamed after 6.0 2025-05-03
+%rename plasma6-discover-notifier
 
 %description notifier
 %{name} notifier plasmoid.
