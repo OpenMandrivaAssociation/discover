@@ -6,7 +6,7 @@
 Summary:	Plasma 6 package manager
 Name:		discover
 Version:	6.3.5
-Release:	%{?git:0.%{git}.}1
+Release:	%{?git:0.%{git}.}2
 License:	GPLv2+
 Group:		Graphical desktop/KDE
 Url:		https://www.kde.org/
@@ -92,6 +92,8 @@ Requires:	qt6-qttools-dbus
 BuildSystem:	cmake
 BuildOption:	-DBUILD_QCH:BOOL=ON
 BuildOption:	-DKDE_INSTALL_USE_QT_SYS_PATHS:BOOL=ON
+BuildOption:	-DCMAKE_SKIP_RPATH:BOOL=OFF
+BuildOption:	-DCMAKE_SKIP_INSTALL_RPATH:BOOL=OFF
 # Renamed after 6.0 2025-05-01
 %rename plasma6-discover
 
