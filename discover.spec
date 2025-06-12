@@ -6,7 +6,7 @@
 Summary:	Plasma 6 package manager
 Name:		discover
 Version:	6.3.5
-Release:	%{?git:0.%{git}.}1
+Release:	%{?git:0.%{git}.}2
 License:	GPLv2+
 Group:		Graphical desktop/KDE
 Url:		https://www.kde.org/
@@ -17,6 +17,7 @@ Source0:	http://download.kde.org/%{stable}/plasma/%(echo %{version} |cut -d. -f1
 %endif
 Source1:	discoverrc
 Source2:	discover-upgrade
+Source3:  plasma-discover.conf
 Source10:	discover-wrapper.in
 Patch0:		discover-5.17.5-default-sort-by-name.patch
 Patch1:		discover-dont-switch-branches.patch
@@ -104,6 +105,7 @@ Plasma 6 package manager.
 %{_datadir}/kxmlgui5/plasmadiscover
 %{_datadir}/applications/*.desktop
 %{_sysconfdir}/xdg/discoverrc
+%{_sysconfdir}/ld.so.conf.d/plasma-discover.conf
 %{_bindir}/plasma-discover
 %{_bindir}/plasma-discover-main
 %{_bindir}/plasma-discover-update
@@ -209,10 +211,11 @@ Requires:	%{name} = %{EVRD}
 sed -i -e 's,@LIBEXECDIR@,%{_libexecdir},g' libdiscover/backends/PackageKitBackend/PackageKitUpdater.cpp
 
 %install -a
-install -m 644 -p -D %{SOURCE1} %{buildroot}%{_sysconfdir}/xdg/discoverrc
+install -m 644 -p -D %{S:1} %{buildroot}%{_sysconfdir}/xdg/discoverrc
 mv %{buildroot}%{_bindir}/plasma-discover %{buildroot}%{_bindir}/plasma-discover-main
 sed -e 's,@QTDIR@,%{_qtdir},g' %{S:10} >%{buildroot}%{_bindir}/plasma-discover
 chmod 0755 %{buildroot}%{_bindir}/plasma-discover
 
 mkdir -p %{buildroot}%{_libexecdir}
 install -c -m 755 %{S:2} %{buildroot}%{_libexecdir}/
+install -p -m 644 -D %{S:3} %{buildroot}%{_sysconfdir}/ld.so.conf.d/plasma-discover.conf
