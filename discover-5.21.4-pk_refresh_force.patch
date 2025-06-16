@@ -1,18 +1,18 @@
-diff -up discover-6.1.0/libdiscover/backends/PackageKitBackend/PackageKitBackend.cpp.3~ discover-6.1.0/libdiscover/backends/PackageKitBackend/PackageKitBackend.cpp
---- discover-6.1.0/libdiscover/backends/PackageKitBackend/PackageKitBackend.cpp.3~	2024-06-13 12:35:00.000000000 +0200
-+++ discover-6.1.0/libdiscover/backends/PackageKitBackend/PackageKitBackend.cpp	2024-06-18 16:22:13.821349042 +0200
-@@ -579,7 +579,7 @@ void PackageKitBackend::checkForUpdates(
-     if (!m_refresher) {
+diff -up discover-6.4.0/libdiscover/backends/PackageKitBackend/PackageKitBackend.cpp.3~ discover-6.4.0/libdiscover/backends/PackageKitBackend/PackageKitBackend.cpp
+--- discover-6.4.0/libdiscover/backends/PackageKitBackend/PackageKitBackend.cpp.3~	2025-06-12 10:58:00.000000000 +0200
++++ discover-6.4.0/libdiscover/backends/PackageKitBackend/PackageKitBackend.cpp	2025-06-16 14:31:43.588014453 +0200
+@@ -578,7 +578,7 @@ void PackageKitBackend::checkForUpdates(
          acquireFetching(true);
+         Q_EMIT m_updater->fetchingChanged();
          m_updater->clearDistroUpgrade();
 -        m_refresher = PackageKit::Daemon::refreshCache(false);
 +        m_refresher = PackageKit::Daemon::refreshCache(true);
          // Limit the cache-age so that we actually download new caches if necessary
          m_refresher->setHints(globalHints() << QStringLiteral("cache-age=300" /* 5 minutes */));
  
-diff -up discover-6.1.0/libdiscover/backends/PackageKitBackend/PackageKitNotifier.cpp.3~ discover-6.1.0/libdiscover/backends/PackageKitBackend/PackageKitNotifier.cpp
---- discover-6.1.0/libdiscover/backends/PackageKitBackend/PackageKitNotifier.cpp.3~	2024-06-13 12:35:00.000000000 +0200
-+++ discover-6.1.0/libdiscover/backends/PackageKitBackend/PackageKitNotifier.cpp	2024-06-18 16:25:15.503238150 +0200
+diff -up discover-6.4.0/libdiscover/backends/PackageKitBackend/PackageKitNotifier.cpp.3~ discover-6.4.0/libdiscover/backends/PackageKitBackend/PackageKitNotifier.cpp
+--- discover-6.4.0/libdiscover/backends/PackageKitBackend/PackageKitNotifier.cpp.3~	2025-06-12 10:58:00.000000000 +0200
++++ discover-6.4.0/libdiscover/backends/PackageKitBackend/PackageKitNotifier.cpp	2025-06-16 10:10:05.313987448 +0200
 @@ -63,7 +63,7 @@ PackageKitNotifier::PackageKitNotifier(Q
              bool ok;
              const int days = value.toInt(&ok);
