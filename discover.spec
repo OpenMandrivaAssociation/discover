@@ -6,7 +6,7 @@
 Summary:	Plasma 6 package manager
 Name:		discover
 Version:	6.4.5
-Release:	%{?git:0.%{git}.}1
+Release:	%{?git:0.%{git}.}2
 License:	GPLv2+
 Group:		Graphical desktop/KDE
 Url:		https://www.kde.org/
@@ -137,7 +137,6 @@ Summary:	PackageKit backend for %{name}
 Group:		Graphical desktop/KDE
 %rename muon-backend-packagekit
 Requires:	packagekit
-Requires:	dnf-plugins-core
 # Renamed after 6.0 2025-05-03
 %rename plasma6-discover-backend-packagekit
 
