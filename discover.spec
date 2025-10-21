@@ -5,8 +5,8 @@
 
 Summary:	Plasma 6 package manager
 Name:		discover
-Version:	6.4.5
-Release:	%{?git:0.%{git}.}2
+Version:	6.5.0
+Release:	%{?git:0.%{git}.}1
 License:	GPLv2+
 Group:		Graphical desktop/KDE
 Url:		https://www.kde.org/
