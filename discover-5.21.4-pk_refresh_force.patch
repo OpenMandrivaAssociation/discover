@@ -1,19 +1,19 @@
-diff -up discover-6.4.0/libdiscover/backends/PackageKitBackend/PackageKitBackend.cpp.3~ discover-6.4.0/libdiscover/backends/PackageKitBackend/PackageKitBackend.cpp
---- discover-6.4.0/libdiscover/backends/PackageKitBackend/PackageKitBackend.cpp.3~	2025-06-12 10:58:00.000000000 +0200
-+++ discover-6.4.0/libdiscover/backends/PackageKitBackend/PackageKitBackend.cpp	2025-06-16 14:31:43.588014453 +0200
-@@ -578,7 +578,7 @@ void PackageKitBackend::checkForUpdates(
+diff -up discover-6.6.2/libdiscover/backends/PackageKitBackend/PackageKitBackend.cpp.3~ discover-6.6.2/libdiscover/backends/PackageKitBackend/PackageKitBackend.cpp
+--- discover-6.6.2/libdiscover/backends/PackageKitBackend/PackageKitBackend.cpp.3~	2026-03-03 10:29:38.000000000 +0100
++++ discover-6.6.2/libdiscover/backends/PackageKitBackend/PackageKitBackend.cpp	2026-03-03 17:21:45.521814904 +0100
+@@ -605,7 +605,7 @@ void PackageKitBackend::checkForUpdates(
+     if (!m_refresher) {
          acquireFetching(true);
-         Q_EMIT m_updater->fetchingChanged();
          m_updater->clearDistroUpgrade();
--        m_refresher = PackageKit::Daemon::refreshCache(false);
-+        m_refresher = PackageKit::Daemon::refreshCache(true);
+-        auto refresh = PackageKit::Daemon::refreshCache(false);
++        auto refresh = PackageKit::Daemon::refreshCache(true);
          // Limit the cache-age so that we actually download new caches if necessary
-         m_refresher->setHints(globalHints() << QStringLiteral("cache-age=300" /* 5 minutes */));
- 
-diff -up discover-6.4.0/libdiscover/backends/PackageKitBackend/PackageKitNotifier.cpp.3~ discover-6.4.0/libdiscover/backends/PackageKitBackend/PackageKitNotifier.cpp
---- discover-6.4.0/libdiscover/backends/PackageKitBackend/PackageKitNotifier.cpp.3~	2025-06-12 10:58:00.000000000 +0200
-+++ discover-6.4.0/libdiscover/backends/PackageKitBackend/PackageKitNotifier.cpp	2025-06-16 10:10:05.313987448 +0200
-@@ -63,7 +63,7 @@ PackageKitNotifier::PackageKitNotifier(Q
+         refresh->setHints(globalHints() << QStringLiteral("cache-age=300" /* 5 minutes */));
+         setRefresher(refresh);
+diff -up discover-6.6.2/libdiscover/backends/PackageKitBackend/PackageKitNotifier.cpp.3~ discover-6.6.2/libdiscover/backends/PackageKitBackend/PackageKitNotifier.cpp
+--- discover-6.6.2/libdiscover/backends/PackageKitBackend/PackageKitNotifier.cpp.3~	2026-03-03 10:29:38.000000000 +0100
++++ discover-6.6.2/libdiscover/backends/PackageKitBackend/PackageKitNotifier.cpp	2026-03-03 16:34:09.312842692 +0100
+@@ -62,7 +62,7 @@ PackageKitNotifier::PackageKitNotifier(Q
              bool ok;
              const int days = value.toInt(&ok);
              if (!ok || days == 0) {
@@ -22,7 +22,7 @@ diff -up discover-6.4.0/libdiscover/backends/PackageKitBackend/PackageKitNotifie
                  regularCheck->start();
                  if (!value.isEmpty()) {
                      qWarning() << "couldn't understand value for timer:" << value;
-@@ -299,7 +299,7 @@ void PackageKitNotifier::refreshDatabase
+@@ -301,7 +301,7 @@ void PackageKitNotifier::refreshDatabase
      }
  
      if (!m_refresher) {
