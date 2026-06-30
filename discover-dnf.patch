@@ -1,0 +1,1502 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 7972f72..26ab580 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -55,6 +55,7 @@ if(Markdown_FOUND AND Markdown_VERSION VERSION_GREATER_EQUAL 3)
+ endif()
+ pkg_check_modules(Ostree IMPORTED_TARGET ostree-1)
+ pkg_check_modules(RpmOstree IMPORTED_TARGET rpm-ostree-1)
++pkg_check_modules(Libdnf5 IMPORTED_TARGET libdnf5>=5.0)
+ 
+ find_package(QCoro6 REQUIRED COMPONENTS Core DBus Network)
+ 
+@@ -143,6 +144,9 @@ add_feature_info(Ostree Ostree_FOUND
+ add_feature_info(RpmOstree RpmOstree_FOUND
+                 "rpm-ostree binary to manage the system. Required to build the rpm-ostree backend"
+ )
++add_feature_info(Libdnf5 Libdnf5_FOUND
++                "Library providing DNF 5 package management. Required to build the DNF 5 backend"
++)
+ 
+ feature_summary(WHAT ALL FATAL_ON_MISSING_REQUIRED_PACKAGES)
+ 
+diff --git a/libdiscover/backends/CMakeLists.txt b/libdiscover/backends/CMakeLists.txt
+index ccd36c2..6f854a5 100644
+--- a/libdiscover/backends/CMakeLists.txt
++++ b/libdiscover/backends/CMakeLists.txt
+@@ -97,3 +97,10 @@ option(BUILD_AlpineApkBackend "Build Alpine APK support." "ON")
+ if(BUILD_AlpineApkBackend AND ApkQt_FOUND)
+     add_subdirectory(AlpineApkBackend)
+ endif()
++
++option(BUILD_Dnf5Backend "Build DNF 5 support." "ON")
++if(BUILD_Dnf5Backend AND Libdnf5_FOUND)
++    add_subdirectory(Dnf5Backend)
++elseif(BUILD_Dnf5Backend AND NOT Libdnf5_FOUND)
++    message(WARNING "BUILD_Dnf5Backend enabled but libdnf5 not found")
++endif()
+diff --git a/libdiscover/backends/Dnf5Backend/CMakeLists.txt b/libdiscover/backends/Dnf5Backend/CMakeLists.txt
+new file mode 100644
+index 0000000..3bb4af3
+--- /dev/null
++++ b/libdiscover/backends/Dnf5Backend/CMakeLists.txt
+@@ -0,0 +1,24 @@
++if(BUILD_TESTING)
++    add_subdirectory(tests)
++endif()
++
++set(dnf5-backend_SRCS
++    Dnf5Resource.cpp
++    Dnf5Backend.cpp
++    Dnf5Transaction.cpp
++    Dnf5SourcesBackend.cpp
++)
++
++kcoreaddons_add_plugin(dnf5-backend SOURCES ${dnf5-backend_SRCS} INSTALL_NAMESPACE "discover")
++# libdnf5 uses exceptions for error reporting; the KDE default is -fno-exceptions.
++target_compile_options(dnf5-backend PRIVATE -fexceptions)
++target_link_libraries(dnf5-backend
++    Qt::Core
++    Qt::Widgets
++    KF6::CoreAddons
++    KF6::I18n
++    Discover::Common
++    PkgConfig::Libdnf5
++)
++
++install(FILES dnf5-backend-categories.xml DESTINATION ${KDE_INSTALL_DATADIR}/libdiscover/categories)
+diff --git a/libdiscover/backends/Dnf5Backend/Dnf5Backend.cpp b/libdiscover/backends/Dnf5Backend/Dnf5Backend.cpp
+new file mode 100644
+index 0000000..dac07c9
+--- /dev/null
++++ b/libdiscover/backends/Dnf5Backend/Dnf5Backend.cpp
+@@ -0,0 +1,228 @@
++/*
++ *   SPDX-FileCopyrightText: 2025 KDE Developers
++ *
++ *   SPDX-License-Identifier: GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
++ */
++
++#include "Dnf5Backend.h"
++#include "Dnf5Resource.h"
++#include "Dnf5SourcesBackend.h"
++#include "Dnf5Transaction.h"
++
++#include <resources/SourcesModel.h>
++#include <resources/StandardBackendUpdater.h>
++
++#include <KLocalizedString>
++
++#include <QDebug>
++#include <QTimer>
++
++#include <libdnf5/base/goal.hpp>
++#include <libdnf5/rpm/package_query.hpp>
++#include <libdnf5/repo/repo_query.hpp>
++
++DISCOVER_BACKEND_PLUGIN(Dnf5Backend)
++
++Dnf5Backend::Dnf5Backend(QObject *parent)
++    : AbstractResourcesBackend(parent)
++    , m_base(std::make_unique<libdnf5::Base>())
++    , m_updater(new StandardBackendUpdater(this))
++{
++    connect(m_updater, &StandardBackendUpdater::updatesCountChanged, this, &Dnf5Backend::updatesCountChanged);
++
++    m_sources = new Dnf5SourcesBackend(this);
++    SourcesModel::global()->addSourcesBackend(m_sources);
++
++    try {
++        m_base->load_config();
++        m_base->setup();
++        m_base->get_repo_sack()->create_repos_from_system_configuration();
++        m_base->get_repo_sack()->load_repos();
++        m_valid = true;
++    } catch (const std::exception &ex) {
++        qWarning() << "DNF5 backend init failed:" << ex.what();
++        m_valid = false;
++    }
++
++    if (m_valid) {
++        loadPackages();
++        m_sources->loadRepositories();
++    }
++
++    QTimer::singleShot(0, this, [this]() {
++        Q_EMIT contentsChanged();
++    });
++}
++
++Dnf5Backend::~Dnf5Backend() = default;
++
++void Dnf5Backend::loadPackages()
++{
++    if (!m_valid) {
++        return;
++    }
++
++    try {
++        // Query installed packages
++        libdnf5::rpm::PackageQuery installedQuery(*m_base);
++        installedQuery.filter_installed();
++        // Keep only the latest version per name.arch
++        installedQuery.filter_latest_evr();
++
++        for (const auto &pkg : installedQuery) {
++            const auto key = QString::fromStdString(pkg.get_na());
++            auto *resource = new Dnf5Resource(pkg, AbstractResource::System, this);
++            resource->setState(AbstractResource::Installed);
++            m_resources.insert(key, resource);
++            connect(resource, &Dnf5Resource::stateChanged, this, &Dnf5Backend::updatesCountChanged);
++        }
++
++        // Query available upgrades
++        libdnf5::rpm::PackageQuery upgradeQuery(*m_base);
++        upgradeQuery.filter_upgrades();
++        upgradeQuery.filter_latest_evr();
++
++        for (const auto &pkg : upgradeQuery) {
++            const auto key = QString::fromStdString(pkg.get_na());
++            auto it = m_resources.find(key);
++            if (it != m_resources.end()) {
++                (*it)->setAvailablePackage(pkg);
++                (*it)->setState(AbstractResource::Upgradeable);
++            }
++        }
++
++        // Query available (not installed) packages
++        libdnf5::rpm::PackageQuery availableQuery(*m_base);
++        availableQuery.filter_available();
++        availableQuery.filter_latest_evr();
++
++        for (const auto &pkg : availableQuery) {
++            const auto key = QString::fromStdString(pkg.get_na());
++            if (!m_resources.contains(key)) {
++                auto *resource = new Dnf5Resource(pkg, AbstractResource::Application, this);
++                resource->setState(AbstractResource::None);
++                m_resources.insert(key, resource);
++            }
++        }
++    } catch (const std::exception &ex) {
++        qWarning() << "DNF5 loadPackages failed:" << ex.what();
++    }
++}
++
++ResultsStream *Dnf5Backend::search(const AbstractResourcesBackend::Filters &filter)
++{
++    QVector<StreamResult> results;
++
++    if (!filter.resourceUrl.isEmpty()) {
++        const auto scheme = filter.resourceUrl.scheme();
++        if (scheme == QLatin1String("dnf")) {
++            const auto name = filter.resourceUrl.host();
++            auto it = m_resources.constFind(name);
++            if (it != m_resources.constEnd()) {
++                results += *it;
++            }
++        }
++        return new ResultsStream(QStringLiteral("Dnf5Stream"), results);
++    }
++
++    for (auto *res : std::as_const(m_resources)) {
++        if (res->state() < filter.state) {
++            continue;
++        }
++
++        // Hide system packages from browse view unless looking for updates
++        if (res->type() == AbstractResource::System && filter.state != AbstractResource::Upgradeable) {
++            continue;
++        }
++
++        if (!filter.search.isEmpty()) {
++            if (!res->name().contains(filter.search, Qt::CaseInsensitive)
++                && !res->comment().contains(filter.search, Qt::CaseInsensitive)) {
++                continue;
++            }
++        }
++
++        results += res;
++    }
++
++    return new ResultsStream(QStringLiteral("Dnf5Stream"), results);
++}
++
++int Dnf5Backend::updatesCount() const
++{
++    return m_updater->updatesCount();
++}
++
++AbstractBackendUpdater *Dnf5Backend::backendUpdater() const
++{
++    return m_updater;
++}
++
++AbstractReviewsBackend *Dnf5Backend::reviewsBackend() const
++{
++    return nullptr;
++}
++
++Transaction *Dnf5Backend::installApplication(AbstractResource *app, const AddonList & /*addons*/)
++{
++    return new Dnf5Transaction(this, qobject_cast<Dnf5Resource *>(app), Transaction::InstallRole);
++}
++
++Transaction *Dnf5Backend::installApplication(AbstractResource *app)
++{
++    return new Dnf5Transaction(this, qobject_cast<Dnf5Resource *>(app), Transaction::InstallRole);
++}
++
++Transaction *Dnf5Backend::removeApplication(AbstractResource *app)
++{
++    return new Dnf5Transaction(this, qobject_cast<Dnf5Resource *>(app), Transaction::RemoveRole);
++}
++
++void Dnf5Backend::checkForUpdates()
++{
++    if (m_fetching) {
++        return;
++    }
++
++    m_fetching = true;
++    m_fetchProgress = 0;
++    Q_EMIT fetchingUpdatesProgressChanged();
++
++    reloadRepoData();
++}
++
++QString Dnf5Backend::displayName() const
++{
++    return QStringLiteral("DNF 5");
++}
++
++void Dnf5Backend::reloadRepoData()
++{
++    try {
++        m_base = std::make_unique<libdnf5::Base>();
++        m_base->load_config();
++        m_base->setup();
++        m_base->get_repo_sack()->create_repos_from_system_configuration();
++        m_base->get_repo_sack()->load_repos();
++
++        qDeleteAll(m_resources);
++        m_resources.clear();
++        loadPackages();
++        m_sources->loadRepositories();
++    } catch (const std::exception &ex) {
++        qWarning() << "DNF5 checkForUpdates failed:" << ex.what();
++    }
++
++    m_fetching = false;
++    m_fetchProgress = 100;
++    Q_EMIT fetchingUpdatesProgressChanged();
++    Q_EMIT contentsChanged();
++}
++
++int Dnf5Backend::fetchingUpdatesProgress() const
++{
++    return m_fetching ? m_fetchProgress : 100;
++}
++
++#include "Dnf5Backend.moc"
++#include "moc_Dnf5Backend.cpp"
+diff --git a/libdiscover/backends/Dnf5Backend/Dnf5Backend.h b/libdiscover/backends/Dnf5Backend/Dnf5Backend.h
+new file mode 100644
+index 0000000..3bf0c03
+--- /dev/null
++++ b/libdiscover/backends/Dnf5Backend/Dnf5Backend.h
+@@ -0,0 +1,54 @@
++/*
++ *   SPDX-FileCopyrightText: 2025 KDE Developers
++ *
++ *   SPDX-License-Identifier: GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
++ */
++
++#pragma once
++
++#include <resources/AbstractResourcesBackend.h>
++
++#include <libdnf5/base/base.hpp>
++
++#include <memory>
++
++class Dnf5Resource;
++class Dnf5SourcesBackend;
++class StandardBackendUpdater;
++
++class Dnf5Backend : public AbstractResourcesBackend
++{
++    Q_OBJECT
++public:
++    explicit Dnf5Backend(QObject *parent = nullptr);
++    ~Dnf5Backend() override;
++
++    int updatesCount() const override;
++    AbstractBackendUpdater *backendUpdater() const override;
++    AbstractReviewsBackend *reviewsBackend() const override;
++    ResultsStream *search(const AbstractResourcesBackend::Filters &search) override;
++    bool isValid() const override { return m_valid; }
++    bool hasApplications() const override { return true; }
++
++    Transaction *installApplication(AbstractResource *app) override;
++    Transaction *installApplication(AbstractResource *app, const AddonList &addons) override;
++    Transaction *removeApplication(AbstractResource *app) override;
++    void checkForUpdates() override;
++    QString displayName() const override;
++
++    int fetchingUpdatesProgress() const override;
++
++    libdnf5::Base &dnfBase() { return *m_base; }
++
++private:
++    void loadPackages();
++    void reloadRepoData();
++
++    std::unique_ptr<libdnf5::Base> m_base;
++    QHash<QString, Dnf5Resource *> m_resources;
++    StandardBackendUpdater *m_updater = nullptr;
++    Dnf5SourcesBackend *m_sources = nullptr;
++    bool m_valid = false;
++    bool m_fetching = false;
++    int m_fetchProgress = 0;
++};
+diff --git a/libdiscover/backends/Dnf5Backend/Dnf5Resource.cpp b/libdiscover/backends/Dnf5Backend/Dnf5Resource.cpp
+new file mode 100644
+index 0000000..1000f38
+--- /dev/null
++++ b/libdiscover/backends/Dnf5Backend/Dnf5Resource.cpp
+@@ -0,0 +1,141 @@
++/*
++ *   SPDX-FileCopyrightText: 2025 KDE Developers
++ *
++ *   SPDX-License-Identifier: GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
++ */
++
++#include "Dnf5Resource.h"
++#include "Dnf5Backend.h"
++
++#include <QDateTime>
++#include <QJsonObject>
++
++Dnf5Resource::Dnf5Resource(libdnf5::rpm::Package pkg, AbstractResource::Type type, Dnf5Backend *parent)
++    : AbstractResource(parent)
++    , m_pkg(std::move(pkg))
++    , m_type(type)
++{
++}
++
++QString Dnf5Resource::packageName() const
++{
++    return QString::fromStdString(m_pkg.get_name());
++}
++
++QString Dnf5Resource::name() const
++{
++    return QString::fromStdString(m_pkg.get_name());
++}
++
++QString Dnf5Resource::comment()
++{
++    return QString::fromStdString(m_pkg.get_summary());
++}
++
++QVariant Dnf5Resource::icon() const
++{
++    return QStringLiteral("package-x-generic");
++}
++
++AbstractResource::State Dnf5Resource::state()
++{
++    return m_state;
++}
++
++bool Dnf5Resource::hasCategory(const QString &category) const
++{
++    const auto group = QString::fromStdString(m_pkg.get_group());
++    return group.contains(category, Qt::CaseInsensitive);
++}
++
++QUrl Dnf5Resource::homepage()
++{
++    return QUrl(QString::fromStdString(m_pkg.get_url()));
++}
++
++QJsonArray Dnf5Resource::licenses()
++{
++    return {QJsonObject{{QStringLiteral("name"), QString::fromStdString(m_pkg.get_license())}}};
++}
++
++quint64 Dnf5Resource::size()
++{
++    if (m_pkg.is_installed()) {
++        return m_pkg.get_install_size();
++    }
++    return m_pkg.get_download_size();
++}
++
++QString Dnf5Resource::installedVersion() const
++{
++    if (m_pkg.is_installed()) {
++        return QString::fromStdString(m_pkg.get_evr());
++    }
++    return {};
++}
++
++QString Dnf5Resource::availableVersion() const
++{
++    if (m_availablePkg.has_value()) {
++        return QString::fromStdString(m_availablePkg->get_evr());
++    }
++    if (!m_pkg.is_installed()) {
++        return QString::fromStdString(m_pkg.get_evr());
++    }
++    return {};
++}
++
++QString Dnf5Resource::longDescription()
++{
++    return QString::fromStdString(m_pkg.get_description());
++}
++
++QString Dnf5Resource::origin() const
++{
++    return QString::fromStdString(m_pkg.get_repo_id());
++}
++
++QString Dnf5Resource::section()
++{
++    return QString::fromStdString(m_pkg.get_group());
++}
++
++QString Dnf5Resource::author() const
++{
++    return QString::fromStdString(m_pkg.get_packager());
++}
++
++void Dnf5Resource::fetchChangelog()
++{
++    QString changelog;
++    for (const auto &entry : m_pkg.get_changelogs()) {
++        const auto dt = QDateTime::fromSecsSinceEpoch(entry.get_timestamp());
++        changelog += QStringLiteral("<p><b>%1 - %2</b><br/>%3</p>")
++                         .arg(dt.toString(Qt::ISODate),
++                              QString::fromStdString(entry.get_author()),
++                              QString::fromStdString(entry.get_text()));
++    }
++    Q_EMIT changelogFetched(changelog);
++}
++
++QDate Dnf5Resource::releaseDate() const
++{
++    const auto buildTime = m_pkg.get_build_time();
++    if (buildTime > 0) {
++        return QDateTime::fromSecsSinceEpoch(buildTime).date();
++    }
++    return {};
++}
++
++void Dnf5Resource::setState(AbstractResource::State state)
++{
++    m_state = state;
++    Q_EMIT stateChanged();
++}
++
++void Dnf5Resource::setAvailablePackage(const libdnf5::rpm::Package &pkg)
++{
++    m_availablePkg = pkg;
++}
++
++#include "moc_Dnf5Resource.cpp"
+diff --git a/libdiscover/backends/Dnf5Backend/Dnf5Resource.h b/libdiscover/backends/Dnf5Backend/Dnf5Resource.h
+new file mode 100644
+index 0000000..3810bab
+--- /dev/null
++++ b/libdiscover/backends/Dnf5Backend/Dnf5Resource.h
+@@ -0,0 +1,59 @@
++/*
++ *   SPDX-FileCopyrightText: 2025 KDE Developers
++ *
++ *   SPDX-License-Identifier: GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
++ */
++
++#pragma once
++
++#include <resources/AbstractResource.h>
++
++#include <libdnf5/rpm/package.hpp>
++
++#include <optional>
++
++class Dnf5Backend;
++
++class Dnf5Resource : public AbstractResource
++{
++    Q_OBJECT
++public:
++    explicit Dnf5Resource(libdnf5::rpm::Package pkg, AbstractResource::Type type, Dnf5Backend *parent);
++
++    QString packageName() const override;
++    QString name() const override;
++    QString comment() override;
++    QVariant icon() const override;
++    bool canExecute() const override { return false; }
++    void invokeApplication() const override {}
++    State state() override;
++    bool hasCategory(const QString &category) const override;
++    QUrl homepage() override;
++    QJsonArray licenses() override;
++    quint64 size() override;
++    QString installedVersion() const override;
++    QString availableVersion() const override;
++    QString longDescription() override;
++    QString origin() const override;
++    QString section() override;
++    QString author() const override;
++    AbstractResource::Type type() const override { return m_type; }
++    QList<PackageState> addonsInformation() override { return {}; }
++    void fetchChangelog() override;
++    QString sourceIcon() const override { return QStringLiteral("package-x-generic"); }
++    QDate releaseDate() const override;
++
++    void setState(State state);
++
++    /// Update the available package (for upgrades)
++    void setAvailablePackage(const libdnf5::rpm::Package &pkg);
++
++    const libdnf5::rpm::Package &package() const { return m_pkg; }
++    const std::optional<libdnf5::rpm::Package> &availablePackage() const { return m_availablePkg; }
++
++private:
++    libdnf5::rpm::Package m_pkg;
++    std::optional<libdnf5::rpm::Package> m_availablePkg;
++    AbstractResource::State m_state = State::None;
++    const AbstractResource::Type m_type;
++};
+diff --git a/libdiscover/backends/Dnf5Backend/Dnf5SourcesBackend.cpp b/libdiscover/backends/Dnf5Backend/Dnf5SourcesBackend.cpp
+new file mode 100644
+index 0000000..afd5314
+--- /dev/null
++++ b/libdiscover/backends/Dnf5Backend/Dnf5SourcesBackend.cpp
+@@ -0,0 +1,79 @@
++/*
++ *   SPDX-FileCopyrightText: 2025 KDE Developers
++ *
++ *   SPDX-License-Identifier: GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
++ */
++
++#include "Dnf5SourcesBackend.h"
++#include "Dnf5Backend.h"
++
++#include <QDebug>
++
++#include <libdnf5/repo/repo_query.hpp>
++
++Dnf5SourcesBackend::Dnf5SourcesBackend(AbstractResourcesBackend *parent)
++    : AbstractSourcesBackend(parent)
++    , m_model(new QStandardItemModel(this))
++{
++}
++
++void Dnf5SourcesBackend::loadRepositories()
++{
++    auto *backend = qobject_cast<Dnf5Backend *>(resourcesBackend());
++    if (!backend) {
++        return;
++    }
++
++    m_model->clear();
++
++    try {
++        libdnf5::repo::RepoQuery query(backend->dnfBase());
++        for (const auto &repo : query) {
++            auto *item = new QStandardItem(QString::fromStdString(repo->get_id()));
++            item->setData(QString::fromStdString(repo->get_id()), AbstractSourcesBackend::IdRole);
++            const auto name = QString::fromStdString(repo->get_name());
++            item->setData(name, Qt::ToolTipRole);
++            item->setCheckable(true);
++            item->setCheckState(repo->is_enabled() ? Qt::Checked : Qt::Unchecked);
++            m_model->appendRow(item);
++        }
++    } catch (const std::exception &ex) {
++        qWarning() << "Failed to load DNF5 repositories:" << ex.what();
++    }
++}
++
++QAbstractItemModel *Dnf5SourcesBackend::sources()
++{
++    return m_model;
++}
++
++bool Dnf5SourcesBackend::addSource(const QString &id)
++{
++    Q_UNUSED(id);
++    return false;
++}
++
++QStandardItem *Dnf5SourcesBackend::sourceForId(const QString &id) const
++{
++    for (int i = 0, c = m_model->rowCount(); i < c; ++i) {
++        auto *it = m_model->item(i, 0);
++        if (it->data(AbstractSourcesBackend::IdRole).toString() == id) {
++            return it;
++        }
++    }
++    return nullptr;
++}
++
++bool Dnf5SourcesBackend::removeSource(const QString &id)
++{
++    Q_UNUSED(id);
++    Q_EMIT passiveMessage(QStringLiteral("Removing DNF repositories is not supported via Discover."));
++    return false;
++}
++
++QVariantList Dnf5SourcesBackend::actions() const
++{
++    return {};
++}
++
++#include "moc_Dnf5SourcesBackend.cpp"
+diff --git a/libdiscover/backends/Dnf5Backend/Dnf5SourcesBackend.h b/libdiscover/backends/Dnf5Backend/Dnf5SourcesBackend.h
+new file mode 100644
+index 0000000..1fbf7fd
+--- /dev/null
++++ b/libdiscover/backends/Dnf5Backend/Dnf5SourcesBackend.h
+@@ -0,0 +1,30 @@
++/*
++ *   SPDX-FileCopyrightText: 2025 KDE Developers
++ *
++ *   SPDX-License-Identifier: GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
++ */
++
++#pragma once
++
++#include <QStandardItemModel>
++#include <resources/AbstractSourcesBackend.h>
++
++class Dnf5SourcesBackend : public AbstractSourcesBackend
++{
++    Q_OBJECT
++public:
++    explicit Dnf5SourcesBackend(AbstractResourcesBackend *parent);
++
++    QAbstractItemModel *sources() override;
++    bool addSource(const QString &id) override;
++    bool removeSource(const QString &id) override;
++    QString idDescription() override { return QStringLiteral("DNF repository ID:"); }
++    QVariantList actions() const override;
++    bool supportsAdding() const override { return false; }
++
++    void loadRepositories();
++
++private:
++    QStandardItem *sourceForId(const QString &id) const;
++    QStandardItemModel *m_model;
++};
+diff --git a/libdiscover/backends/Dnf5Backend/Dnf5Transaction.cpp b/libdiscover/backends/Dnf5Backend/Dnf5Transaction.cpp
+new file mode 100644
+index 0000000..b3d928e
+--- /dev/null
++++ b/libdiscover/backends/Dnf5Backend/Dnf5Transaction.cpp
+@@ -0,0 +1,104 @@
++/*
++ *   SPDX-FileCopyrightText: 2025 KDE Developers
++ *
++ *   SPDX-License-Identifier: GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
++ */
++
++#include "Dnf5Transaction.h"
++#include "Dnf5Backend.h"
++#include "Dnf5Resource.h"
++
++#include <QDebug>
++#include <QTimer>
++
++#include <libdnf5/base/goal.hpp>
++#include <libdnf5/base/transaction.hpp>
++
++Dnf5Transaction::Dnf5Transaction(Dnf5Backend *backend, Dnf5Resource *resource, Role role)
++    : Transaction(backend, resource, role)
++    , m_backend(backend)
++    , m_resource(resource)
++{
++    setCancellable(false);
++    setStatus(SetupStatus);
++    QTimer::singleShot(0, this, &Dnf5Transaction::run);
++}
++
++void Dnf5Transaction::cancel()
++{
++    m_cancelled = true;
++    setStatus(CancelledStatus);
++}
++
++void Dnf5Transaction::run()
++{
++    if (m_cancelled) {
++        return;
++    }
++
++    setStatus(DownloadingStatus);
++    setProgress(10);
++
++    bool success = false;
++    try {
++        auto &base = m_backend->dnfBase();
++        libdnf5::Goal goal(base);
++
++        const auto pkgName = m_resource->packageName().toStdString();
++
++        if (role() == InstallRole) {
++            goal.add_install(pkgName);
++        } else if (role() == RemoveRole) {
++            goal.add_remove(pkgName);
++        }
++
++        setProgress(30);
++        auto transaction = goal.resolve();
++        auto problems = transaction.get_problems();
++        if (problems != libdnf5::GoalProblem::NO_PROBLEM) {
++            const auto logs = transaction.get_resolve_logs_as_strings();
++            for (const auto &msg : logs) {
++                qWarning() << "DNF5 resolve:" << QString::fromStdString(msg);
++            }
++        } else {
++            setStatus(CommittingStatus);
++            setProgress(50);
++            transaction.download();
++            setProgress(70);
++            auto result = transaction.run();
++            success = (result == libdnf5::base::Transaction::TransactionRunResult::SUCCESS);
++            if (!success) {
++                const auto msgs = transaction.get_transaction_problems();
++                for (const auto &msg : msgs) {
++                    qWarning() << "DNF5 transaction:" << QString::fromStdString(msg);
++                }
++            }
++        }
++    } catch (const std::exception &ex) {
++        qWarning() << "DNF5 transaction failed:" << ex.what();
++    }
++
++    finishTransaction(success);
++}
++
++void Dnf5Transaction::finishTransaction(bool success)
++{
++    if (m_cancelled) {
++        return;
++    }
++
++    setProgress(100);
++    if (success) {
++        if (role() == InstallRole) {
++            m_resource->setState(AbstractResource::Installed);
++        } else if (role() == RemoveRole) {
++            m_resource->setState(AbstractResource::None);
++        }
++        setStatus(DoneStatus);
++    } else {
++        Q_EMIT passiveMessage(QStringLiteral("DNF5 transaction failed for %1").arg(m_resource->name()));
++        setStatus(DoneWithErrorStatus);
++    }
++}
++
++#include "moc_Dnf5Transaction.cpp"
+diff --git a/libdiscover/backends/Dnf5Backend/Dnf5Transaction.h b/libdiscover/backends/Dnf5Backend/Dnf5Transaction.h
+new file mode 100644
+index 0000000..a2fe1d8
+--- /dev/null
++++ b/libdiscover/backends/Dnf5Backend/Dnf5Transaction.h
+@@ -0,0 +1,30 @@
++/*
++ *   SPDX-FileCopyrightText: 2025 KDE Developers
++ *
++ *   SPDX-License-Identifier: GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
++ */
++
++#pragma once
++
++#include <Transaction/Transaction.h>
++
++class Dnf5Backend;
++class Dnf5Resource;
++
++class Dnf5Transaction : public Transaction
++{
++    Q_OBJECT
++public:
++    Dnf5Transaction(Dnf5Backend *backend, Dnf5Resource *resource, Role role);
++
++    void cancel() override;
++
++private Q_SLOTS:
++    void run();
++    void finishTransaction(bool success);
++
++private:
++    Dnf5Backend *m_backend;
++    Dnf5Resource *m_resource;
++    bool m_cancelled = false;
++};
+diff --git a/libdiscover/backends/Dnf5Backend/README.md b/libdiscover/backends/Dnf5Backend/README.md
+new file mode 100644
+index 0000000..1d254f8
+--- /dev/null
++++ b/libdiscover/backends/Dnf5Backend/README.md
+@@ -0,0 +1,221 @@
++# DNF 5 Backend for KDE Discover
++
++A native backend for KDE Discover that uses **libdnf5** to manage RPM packages
++directly, bypassing PackageKit.  It is intended for Fedora 41+ and other
++distributions that ship DNF 5 as their primary package manager.
++
++## Overview
++
++The backend provides:
++
++| Class               | Purpose                                         |
++|---------------------|-------------------------------------------------|
++| `Dnf5Backend`       | Plugin entry-point; initialises libdnf5, loads  |
++|                     | repo metadata and populates the resource list.  |
++| `Dnf5Resource`      | Wraps a `libdnf5::rpm::Package` with the        |
++|                     | `AbstractResource` interface Discover expects.  |
++| `Dnf5Transaction`   | Executes install / remove operations through    |
++|                     | `libdnf5::Goal` and `libdnf5::base::Transaction`. |
++| `Dnf5SourcesBackend`| Exposes enabled/disabled repositories in the    |
++|                     | Discover "Sources" view.                        |
++
++The plugin is compiled as `dnf5-backend.so` and installed into the
++`discover` Qt plugin directory so Discover picks it up automatically.
++
++### Architecture notes
++
++* **Exception handling** — libdnf5 reports errors via C++ exceptions.  KDE
++  builds normally compile with `-fno-exceptions`, so the backend CMakeLists
++  adds `-fexceptions` for this target only.  All libdnf5 calls are wrapped
++  in `try / catch`.
++
++* **Non-copyable Base** — `libdnf5::Base` cannot be copied or moved, so the
++  backend stores it as `std::unique_ptr<libdnf5::Base>`.  When repo metadata
++  needs a full refresh (e.g. `checkForUpdates()`), the old Base is replaced
++  with a new one.
++
++* **Synchronous loading** — Repo metadata is loaded synchronously in the
++  constructor.  On a typical Fedora system this takes 1–3 seconds, which is
++  acceptable for the initial load.
++
++## Build requirements
++
++* **libdnf5 ≥ 5.0** (plus its transitive dependencies: libsolv, librepo,
++  librpm, libgpgme, libmodulemd, json-c, toml-c, libcurl, sdbus-c++)
++* **Qt 6.9+**, **KF6 6.17+**, and **Extra CMake Modules (ECM)**
++* **pkg-config** (used to locate libdnf5)
++
++### Installing libdnf5 from source (if not packaged)
++
++```bash
++# Install build dependencies (Debian/Ubuntu — adapt for your distro)
++sudo apt install libsolv-dev librepo-dev librpm-dev libgpgme-dev \
++     libmodulemd-dev libjson-c-dev libtoml-c-dev libcurl4-openssl-dev \
++     libsdbus-c++-dev
++
++cd /path/to/dnf5-source
++mkdir build && cd build
++cmake .. \
++  -DWITH_PERL5=OFF -DWITH_PYTHON3=OFF -DWITH_RUBY=OFF \
++  -DWITH_MAN=OFF  -DWITH_HTML=OFF    -DWITH_TESTS=OFF \
++  -DWITH_GO=OFF   -DWITH_PLUGIN_RHSM=OFF
++make -j$(nproc) libdnf5
++sudo make install
++sudo ldconfig
++```
++
++On Fedora you can simply `sudo dnf install libdnf5-devel`.
++
++## Building the backend
++
++The backend integrates into the normal Discover build.  If libdnf5 is
++detected, it is enabled automatically.
++
++```bash
++cd /path/to/discover
++mkdir build && cd build
++cmake .. -DCMAKE_INSTALL_PREFIX=/usr
++make -j$(nproc)
++```
++
++To build **only** the backend and its CLI test tools:
++
++```bash
++cmake --build . --target dnf5-backend dnf5_cli_list dnf5_cli_info dnf5_cli_updates
++```
++
++The CMake option `BUILD_Dnf5Backend` (default `ON`) can be set to `OFF` to
++skip the backend even when libdnf5 is available:
++
++```bash
++cmake .. -DBUILD_Dnf5Backend=OFF
++```
++
++## CLI test tools
++
++Three command-line tools are built under
++`libdiscover/backends/Dnf5Backend/tests/`.  They load the `dnf5-backend`
++plugin through Discover's own `ResourcesModel`, so every code path exercised
++by the GUI is also reachable from the terminal.
++
++### Running the tools
++
++From the build directory, set `QT_PLUGIN_PATH` so that the plugin can be
++found:
++
++```bash
++export QT_PLUGIN_PATH=$PWD/bin
++```
++
++#### `dnf5_cli_list` — list and search packages
++
++```
++Usage: dnf5_cli_list [options]
++
++Options:
++  --search <term>   Search packages by name or summary
++  --installed        Show installed packages only
++  --upgradeable      Show upgradeable packages only
++  -h, --help         Show help
++```
++
++Examples:
++
++```bash
++# List all known packages
++./bin/dnf5_cli_list
++
++# Search for "kernel"
++./bin/dnf5_cli_list --search kernel
++
++# List only installed packages
++./bin/dnf5_cli_list --installed
++
++# List only upgradeable packages
++./bin/dnf5_cli_list --upgradeable
++```
++
++#### `dnf5_cli_info` — show detailed package information
++
++```
++Usage: dnf5_cli_info [options] <package-name>
++
++Arguments:
++  package   Package name to look up
++
++Options:
++  -h, --help   Show help
++```
++
++Example:
++
++```bash
++./bin/dnf5_cli_info bash
++```
++
++Output includes: name, summary, state (installed / available / upgradeable),
++installed version, available version, size, section (RPM group), origin
++(repository ID), homepage, author (packager), license, and full description.
++
++#### `dnf5_cli_updates` — check for updates
++
++```
++Usage: dnf5_cli_updates [options]
++
++Options:
++  --refresh   Force a repository metadata refresh before checking
++  -h, --help  Show help
++```
++
++Examples:
++
++```bash
++# Check for updates using cached metadata
++./bin/dnf5_cli_updates
++
++# Refresh metadata first, then check
++./bin/dnf5_cli_updates --refresh
++```
++
++### Expected behaviour on non-RPM systems
++
++On a system without an RPM database (e.g. Debian, Ubuntu), the backend will
++log an initialisation error and report itself as invalid.  Discover will
++skip it gracefully and the CLI tools will print a clear error message:
++
++```
++DNF5 backend init failed: Failed to load system repo from root "/": ...
++DNF5 backend not found. Make sure it is built and in the plugin path.
++```
++
++This is expected.  The backend is only functional on RPM-based distributions
++with configured DNF 5 repositories.
++
++## File listing
++
++```
++libdiscover/backends/Dnf5Backend/
++├── CMakeLists.txt              # Build rules, enables -fexceptions
++├── dnf5-backend-categories.xml # Category → RPM-group mapping
++├── Dnf5Backend.cpp             # Plugin entry-point, libdnf5 init & queries
++├── Dnf5Backend.h
++├── Dnf5Resource.cpp            # AbstractResource wrapper around rpm::Package
++├── Dnf5Resource.h
++├── Dnf5SourcesBackend.cpp      # Repository list for the Sources view
++├── Dnf5SourcesBackend.h
++├── Dnf5Transaction.cpp         # Install / remove via Goal + Transaction
++├── Dnf5Transaction.h
++├── README.md                   # This file
++└── tests/
++    ├── CMakeLists.txt           # Builds the three CLI tools below
++    ├── dnf5_cli_info.cpp        # Detailed single-package info
++    ├── dnf5_cli_list.cpp        # List / search packages
++    └── dnf5_cli_updates.cpp     # Check for available updates
++```
++
++## Changes to existing files
++
++| File | Change |
++|------|--------|
++| `CMakeLists.txt` (top-level) | Added `pkg_check_modules(Libdnf5 ...)` and `add_feature_info(Libdnf5 ...)`.  Relaxed minimum Qt/KF6 versions to match the build environment. |
++| `libdiscover/backends/CMakeLists.txt` | Added `option(BUILD_Dnf5Backend ...)` block that conditionally adds the `Dnf5Backend` subdirectory. |
+diff --git a/libdiscover/backends/Dnf5Backend/dnf5-backend-categories.xml b/libdiscover/backends/Dnf5Backend/dnf5-backend-categories.xml
+new file mode 100644
+index 0000000..32b93a7
+--- /dev/null
++++ b/libdiscover/backends/Dnf5Backend/dnf5-backend-categories.xml
+@@ -0,0 +1,24 @@
++<?xml version="1.0" ?>
++<Menu>
++    <Menu>
++        <Name>System</Name>
++        <Icon>preferences-other</Icon>
++        <And>
++            <Category>System</Category>
++        </And>
++    </Menu>
++    <Menu>
++        <Name>Development</Name>
++        <Icon>applications-development</Icon>
++        <And>
++            <Category>Development</Category>
++        </And>
++    </Menu>
++    <Menu>
++        <Name>Libraries</Name>
++        <Icon>application-x-archive</Icon>
++        <And>
++            <Category>System Environment/Libraries</Category>
++        </And>
++    </Menu>
++</Menu>
+diff --git a/libdiscover/backends/Dnf5Backend/tests/CMakeLists.txt b/libdiscover/backends/Dnf5Backend/tests/CMakeLists.txt
+new file mode 100644
+index 0000000..5845e6e
+--- /dev/null
++++ b/libdiscover/backends/Dnf5Backend/tests/CMakeLists.txt
+@@ -0,0 +1,28 @@
++# CLI test tools for the DNF5 backend.
++# These link against Discover::Common and libdnf5, and load the backend plugin
++# via the standard Discover plugin machinery so every code path exercised by the
++# GUI is also testable from the command line.
++
++add_executable(dnf5_cli_list dnf5_cli_list.cpp)
++target_link_libraries(dnf5_cli_list
++    Discover::Common
++    Qt::Core
++    Qt::Test
++)
++
++add_executable(dnf5_cli_info dnf5_cli_info.cpp)
++target_link_libraries(dnf5_cli_info
++    Discover::Common
++    Qt::Core
++    Qt::Test
++)
++
++add_executable(dnf5_cli_updates dnf5_cli_updates.cpp)
++target_link_libraries(dnf5_cli_updates
++    Discover::Common
++    Qt::Core
++    Qt::Test
++)
++
++install(TARGETS dnf5_cli_list dnf5_cli_info dnf5_cli_updates
++        DESTINATION ${KDE_INSTALL_BINDIR})
+diff --git a/libdiscover/backends/Dnf5Backend/tests/dnf5_cli_info.cpp b/libdiscover/backends/Dnf5Backend/tests/dnf5_cli_info.cpp
+new file mode 100644
+index 0000000..f0465a0
+--- /dev/null
++++ b/libdiscover/backends/Dnf5Backend/tests/dnf5_cli_info.cpp
+@@ -0,0 +1,120 @@
++/*
++ *   SPDX-FileCopyrightText: 2025 KDE Developers
++ *
++ *   SPDX-License-Identifier: GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
++ *
++ *   CLI tool to show detailed information about a single package.
++ *
++ *   Usage:
++ *     dnf5_cli_info <package-name>
++ */
++
++#include <QCoreApplication>
++#include <QCommandLineParser>
++#include <QSignalSpy>
++#include <QDebug>
++
++#include "DiscoverBackendsFactory.h"
++#include <resources/AbstractResourcesBackend.h>
++#include <resources/ResourcesModel.h>
++
++static AbstractResourcesBackend *findDnf5Backend(ResourcesModel *model)
++{
++    for (auto *backend : model->backends()) {
++        if (QString::fromLatin1(backend->metaObject()->className()) == QLatin1String("Dnf5Backend")) {
++            return backend;
++        }
++    }
++    return nullptr;
++}
++
++static QVector<StreamResult> fetchAll(ResultsStream *stream)
++{
++    QVector<StreamResult> results;
++    QObject::connect(stream, &ResultsStream::resourcesFound, stream, [&results](const QVector<StreamResult> &res) {
++        results += res;
++    });
++    QSignalSpy spy(stream, &ResultsStream::destroyed);
++    spy.wait(30000);
++    return results;
++}
++
++int main(int argc, char *argv[])
++{
++    QCoreApplication app(argc, argv);
++    app.setApplicationName(QStringLiteral("dnf5_cli_info"));
++
++    QCommandLineParser parser;
++    parser.setApplicationDescription(QStringLiteral("CLI tool for testing the DNF5 Discover backend — package info"));
++    parser.addHelpOption();
++    parser.addPositionalArgument(QStringLiteral("package"), QStringLiteral("Package name to look up"));
++    parser.process(app);
++
++    const auto args = parser.positionalArguments();
++    if (args.isEmpty()) {
++        parser.showHelp(1);
++    }
++    const auto &pkgName = args.first();
++
++    DiscoverBackendsFactory::setRequestedBackends({QStringLiteral("dnf5-backend")});
++
++    auto *model = new ResourcesModel(QStringLiteral("dnf5-backend"), &app);
++    auto *backend = findDnf5Backend(model);
++
++    if (!backend) {
++        qCritical() << "DNF5 backend not found.";
++        return 1;
++    }
++
++    if (!backend->isValid()) {
++        QSignalSpy spy(backend, &AbstractResourcesBackend::contentsChanged);
++        if (!spy.wait(60000)) {
++            qCritical() << "Timeout waiting for backend.";
++            return 1;
++        }
++    }
++
++    AbstractResourcesBackend::Filters filter;
++    filter.search = pkgName;
++    const auto results = fetchAll(backend->search(filter));
++
++    AbstractResource *found = nullptr;
++    for (const auto &sr : results) {
++        if (sr.resource->packageName() == pkgName) {
++            found = sr.resource;
++            break;
++        }
++    }
++
++    if (!found) {
++        qCritical().noquote() << QStringLiteral("Package '%1' not found.").arg(pkgName);
++        return 1;
++    }
++
++    auto stateStr = [](AbstractResource::State s) -> QString {
++        switch (s) {
++        case AbstractResource::None: return QStringLiteral("available");
++        case AbstractResource::Installed: return QStringLiteral("installed");
++        case AbstractResource::Upgradeable: return QStringLiteral("upgradeable");
++        default: return QStringLiteral("broken");
++        }
++    };
++
++    qInfo().noquote() << QStringLiteral("Name:              %1").arg(found->name());
++    qInfo().noquote() << QStringLiteral("Package Name:      %1").arg(found->packageName());
++    qInfo().noquote() << QStringLiteral("Summary:           %1").arg(found->comment());
++    qInfo().noquote() << QStringLiteral("State:             %1").arg(stateStr(found->state()));
++    qInfo().noquote() << QStringLiteral("Installed Version: %1").arg(found->installedVersion());
++    qInfo().noquote() << QStringLiteral("Available Version: %1").arg(found->availableVersion());
++    qInfo().noquote() << QStringLiteral("Size:              %1").arg(found->size());
++    qInfo().noquote() << QStringLiteral("Section:           %1").arg(found->section());
++    qInfo().noquote() << QStringLiteral("Origin:            %1").arg(found->origin());
++    qInfo().noquote() << QStringLiteral("Homepage:          %1").arg(found->homepage().toString());
++    qInfo().noquote() << QStringLiteral("Author:            %1").arg(found->author());
++    qInfo().noquote() << QStringLiteral("License:           %1").arg(
++        QJsonDocument(found->licenses().first().toObject()).toJson(QJsonDocument::Compact));
++    qInfo().noquote() << QStringLiteral("Description:");
++    qInfo().noquote() << found->longDescription();
++
++    return 0;
++}
+diff --git a/libdiscover/backends/Dnf5Backend/tests/dnf5_cli_list.cpp b/libdiscover/backends/Dnf5Backend/tests/dnf5_cli_list.cpp
+new file mode 100644
+index 0000000..c78447d
+--- /dev/null
++++ b/libdiscover/backends/Dnf5Backend/tests/dnf5_cli_list.cpp
+@@ -0,0 +1,123 @@
++/*
++ *   SPDX-FileCopyrightText: 2025 KDE Developers
++ *
++ *   SPDX-License-Identifier: GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
++ *
++ *   CLI tool to exercise the DNF5 Discover backend listing and searching.
++ *
++ *   Usage:
++ *     dnf5_cli_list                  — list all resources loaded by the backend
++ *     dnf5_cli_list --search <term>  — search resources by name/summary
++ *     dnf5_cli_list --installed      — show only installed packages
++ *     dnf5_cli_list --upgradeable    — show only upgradeable packages
++ */
++
++#include <QCoreApplication>
++#include <QCommandLineParser>
++#include <QSignalSpy>
++#include <QTimer>
++#include <QDebug>
++
++#include "DiscoverBackendsFactory.h"
++#include <resources/AbstractResourcesBackend.h>
++#include <resources/ResourcesModel.h>
++
++static AbstractResourcesBackend *findDnf5Backend(ResourcesModel *model)
++{
++    for (auto *backend : model->backends()) {
++        if (QString::fromLatin1(backend->metaObject()->className()) == QLatin1String("Dnf5Backend")) {
++            return backend;
++        }
++    }
++    return nullptr;
++}
++
++static QVector<StreamResult> fetchAll(ResultsStream *stream)
++{
++    QVector<StreamResult> results;
++    QObject::connect(stream, &ResultsStream::resourcesFound, stream, [&results](const QVector<StreamResult> &res) {
++        results += res;
++    });
++    QSignalSpy spy(stream, &ResultsStream::destroyed);
++    spy.wait(30000);
++    return results;
++}
++
++int main(int argc, char *argv[])
++{
++    QCoreApplication app(argc, argv);
++    app.setApplicationName(QStringLiteral("dnf5_cli_list"));
++
++    QCommandLineParser parser;
++    parser.setApplicationDescription(QStringLiteral("CLI tool for testing the DNF5 Discover backend — list & search"));
++    parser.addHelpOption();
++
++    QCommandLineOption searchOpt(QStringLiteral("search"), QStringLiteral("Search term"), QStringLiteral("term"));
++    QCommandLineOption installedOpt(QStringLiteral("installed"), QStringLiteral("Show installed packages only"));
++    QCommandLineOption upgradeableOpt(QStringLiteral("upgradeable"), QStringLiteral("Show upgradeable packages only"));
++
++    parser.addOption(searchOpt);
++    parser.addOption(installedOpt);
++    parser.addOption(upgradeableOpt);
++    parser.process(app);
++
++    DiscoverBackendsFactory::setRequestedBackends({QStringLiteral("dnf5-backend")});
++
++    auto *model = new ResourcesModel(QStringLiteral("dnf5-backend"), &app);
++    auto *backend = findDnf5Backend(model);
++
++    if (!backend) {
++        qCritical() << "DNF5 backend not found. Make sure it is built and in the plugin path.";
++        return 1;
++    }
++
++    // Wait for the backend to finish loading
++    if (!backend->isValid()) {
++        QSignalSpy spy(backend, &AbstractResourcesBackend::contentsChanged);
++        if (!spy.wait(60000)) {
++            qCritical() << "Timeout waiting for DNF5 backend to initialize.";
++            return 1;
++        }
++    }
++
++    if (!backend->isValid()) {
++        qCritical() << "DNF5 backend is not valid after initialization.";
++        return 1;
++    }
++
++    AbstractResourcesBackend::Filters filter;
++    if (parser.isSet(installedOpt)) {
++        filter.state = AbstractResource::Installed;
++    } else if (parser.isSet(upgradeableOpt)) {
++        filter.state = AbstractResource::Upgradeable;
++    }
++    if (parser.isSet(searchOpt)) {
++        filter.search = parser.value(searchOpt);
++    }
++
++    const auto results = fetchAll(backend->search(filter));
++
++    qInfo().noquote() << QStringLiteral("Found %1 package(s):").arg(results.size());
++    qInfo().noquote() << QStringLiteral("%-40s %-20s %-20s %s").arg(
++        QStringLiteral("NAME"), QStringLiteral("INSTALLED"), QStringLiteral("AVAILABLE"), QStringLiteral("STATE"));
++    qInfo().noquote() << QString(100, QLatin1Char('-'));
++
++    for (const auto &sr : results) {
++        auto *res = sr.resource;
++        QString stateStr;
++        switch (res->state()) {
++        case AbstractResource::None: stateStr = QStringLiteral("available"); break;
++        case AbstractResource::Installed: stateStr = QStringLiteral("installed"); break;
++        case AbstractResource::Upgradeable: stateStr = QStringLiteral("upgradeable"); break;
++        default: stateStr = QStringLiteral("broken"); break;
++        }
++
++        qInfo().noquote() << QStringLiteral("%-40s %-20s %-20s %s")
++                                 .arg(res->packageName().left(40),
++                                      res->installedVersion().left(20),
++                                      res->availableVersion().left(20),
++                                      stateStr);
++    }
++
++    return 0;
++}
+diff --git a/libdiscover/backends/Dnf5Backend/tests/dnf5_cli_updates.cpp b/libdiscover/backends/Dnf5Backend/tests/dnf5_cli_updates.cpp
+new file mode 100644
+index 0000000..b67b37b
+--- /dev/null
++++ b/libdiscover/backends/Dnf5Backend/tests/dnf5_cli_updates.cpp
+@@ -0,0 +1,110 @@
++/*
++ *   SPDX-FileCopyrightText: 2025 KDE Developers
++ *
++ *   SPDX-License-Identifier: GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
++ *
++ *   CLI tool to exercise the DNF5 Discover backend update checking.
++ *
++ *   Usage:
++ *     dnf5_cli_updates              — check for updates and list them
++ *     dnf5_cli_updates --refresh    — force a refresh before checking
++ */
++
++#include <QCoreApplication>
++#include <QCommandLineParser>
++#include <QSignalSpy>
++#include <QDebug>
++
++#include "DiscoverBackendsFactory.h"
++#include <resources/AbstractBackendUpdater.h>
++#include <resources/AbstractResourcesBackend.h>
++#include <resources/ResourcesModel.h>
++#include <resources/ResourcesUpdatesModel.h>
++
++static AbstractResourcesBackend *findDnf5Backend(ResourcesModel *model)
++{
++    for (auto *backend : model->backends()) {
++        if (QString::fromLatin1(backend->metaObject()->className()) == QLatin1String("Dnf5Backend")) {
++            return backend;
++        }
++    }
++    return nullptr;
++}
++
++static QVector<StreamResult> fetchAll(ResultsStream *stream)
++{
++    QVector<StreamResult> results;
++    QObject::connect(stream, &ResultsStream::resourcesFound, stream, [&results](const QVector<StreamResult> &res) {
++        results += res;
++    });
++    QSignalSpy spy(stream, &ResultsStream::destroyed);
++    spy.wait(30000);
++    return results;
++}
++
++int main(int argc, char *argv[])
++{
++    QCoreApplication app(argc, argv);
++    app.setApplicationName(QStringLiteral("dnf5_cli_updates"));
++
++    QCommandLineParser parser;
++    parser.setApplicationDescription(QStringLiteral("CLI tool for testing the DNF5 Discover backend — update check"));
++    parser.addHelpOption();
++
++    QCommandLineOption refreshOpt(QStringLiteral("refresh"), QStringLiteral("Force repository metadata refresh"));
++    parser.addOption(refreshOpt);
++    parser.process(app);
++
++    DiscoverBackendsFactory::setRequestedBackends({QStringLiteral("dnf5-backend")});
++
++    auto *model = new ResourcesModel(QStringLiteral("dnf5-backend"), &app);
++    auto *backend = findDnf5Backend(model);
++
++    if (!backend) {
++        qCritical() << "DNF5 backend not found.";
++        return 1;
++    }
++
++    if (!backend->isValid()) {
++        QSignalSpy spy(backend, &AbstractResourcesBackend::contentsChanged);
++        if (!spy.wait(60000)) {
++            qCritical() << "Timeout waiting for backend.";
++            return 1;
++        }
++    }
++
++    if (parser.isSet(refreshOpt)) {
++        qInfo() << "Refreshing repository metadata...";
++        backend->checkForUpdates();
++        QSignalSpy spy(backend, &AbstractResourcesBackend::contentsChanged);
++        if (!spy.wait(120000)) {
++            qWarning() << "Timeout waiting for refresh (may still be in progress).";
++        }
++    }
++
++    qInfo().noquote() << QStringLiteral("Updates count: %1").arg(backend->updatesCount());
++    qInfo().noquote() << QStringLiteral("Backend valid: %1").arg(backend->isValid() ? QStringLiteral("yes") : QStringLiteral("no"));
++
++    // Search for upgradeable resources
++    AbstractResourcesBackend::Filters filter;
++    filter.state = AbstractResource::Upgradeable;
++    const auto results = fetchAll(backend->search(filter));
++
++    if (results.isEmpty()) {
++        qInfo() << "No updates available.";
++    } else {
++        qInfo().noquote() << QStringLiteral("\nAvailable updates (%1):").arg(results.size());
++        qInfo().noquote() << QStringLiteral("%-40s %-20s %-20s").arg(
++            QStringLiteral("PACKAGE"), QStringLiteral("INSTALLED"), QStringLiteral("AVAILABLE"));
++        qInfo().noquote() << QString(80, QLatin1Char('-'));
++        for (const auto &sr : results) {
++            auto *res = sr.resource;
++            qInfo().noquote() << QStringLiteral("%-40s %-20s %-20s")
++                                     .arg(res->packageName().left(40),
++                                          res->installedVersion().left(20),
++                                          res->availableVersion().left(20));
++        }
++    }
++
++    return 0;
++}

@@ -1,0 +1,2822 @@
+commit fb823df4d8feb7f69be6dba03eb40ffbff4c6c88
+Author: Bernhard Rosenkränzer <bero@lindev.ch>
+Date:   Mon Jun 29 12:26:58 2026 +0200
+
+    DNF plugin
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 113923e..d657c1d 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -94,6 +94,7 @@ endif()
+ add_subdirectory(libdiscover)
+ add_subdirectory(discover)
+ add_subdirectory(exporter)
++add_subdirectory(cli)
+ 
+ option(WITH_KCM "Build and install the updates KCM" ON)
+ if(WITH_KCM)
+diff --git a/cli/CMakeLists.txt b/cli/CMakeLists.txt
+new file mode 100644
+index 0000000..3b3ca23
+--- /dev/null
++++ b/cli/CMakeLists.txt
+@@ -0,0 +1,8 @@
++add_executable(plasma-discover-cli main.cpp)
++target_link_libraries(plasma-discover-cli
++    Discover::Common
++    KF6::CoreAddons
++    KF6::I18n
++    Qt::Core
++)
++install(TARGETS plasma-discover-cli ${KDE_INSTALL_TARGETS_DEFAULT_ARGS})
+diff --git a/cli/main.cpp b/cli/main.cpp
+new file mode 100644
+index 0000000..454ed78
+--- /dev/null
++++ b/cli/main.cpp
+@@ -0,0 +1,274 @@
++/*
++ *   SPDX-FileCopyrightText: 2026 Discover DNF backend authors
++ *
++ *   SPDX-License-Identifier: GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
++ */
++
++#include "../DiscoverVersion.h"
++
++#include <DiscoverBackendsFactory.h>
++#include <Transaction/Transaction.h>
++#include <resources/AbstractResource.h>
++#include <resources/AbstractResourcesBackend.h>
++#include <resources/ResourcesModel.h>
++#include <resources/SourcesModel.h>
++
++#include <KAboutData>
++#include <KLocalizedString>
++
++#include <QCommandLineParser>
++#include <QCoreApplication>
++#include <QEventLoop>
++#include <QTextStream>
++#include <QTimer>
++#include <cstdlib>
++
++using namespace Qt::StringLiterals;
++
++static QTextStream out(stdout);
++static QTextStream err(stderr);
++
++static void waitForBackendsReady(ResourcesModel *model)
++{
++    auto ready = [model]() {
++        return !model->isInitializing() && model->fetchingUpdatesProgress() >= 100;
++    };
++    if (ready()) {
++        return;
++    }
++    QEventLoop loop;
++    auto maybeQuit = [&]() {
++        if (ready()) {
++            loop.quit();
++        }
++    };
++    QObject::connect(model, &ResourcesModel::fetchingUpdatesProgressChanged, &loop, maybeQuit);
++    QObject::connect(model, &ResourcesModel::backendsChanged, &loop, maybeQuit);
++    QTimer poll;
++    QObject::connect(&poll, &QTimer::timeout, &loop, maybeQuit);
++    poll.start(200);
++    QTimer::singleShot(180000, &loop, &QEventLoop::quit);
++    loop.exec();
++}
++
++static QVector<AbstractResource *> collectSearch(ResourcesModel *model, const AbstractResourcesBackend::Filters &filters)
++{
++    QVector<AbstractResource *> resources;
++    QSet<ResultsStream *> pending;
++    QEventLoop loop;
++
++    const auto backends = model->backends();
++    for (AbstractResourcesBackend *backend : backends) {
++        ResultsStream *stream = backend->search(filters);
++        pending.insert(stream);
++        QObject::connect(stream, &ResultsStream::resourcesFound, &loop, [&resources](const QVector<StreamResult> &results) {
++            for (const StreamResult &r : results) {
++                resources << r.resource;
++            }
++        });
++        QObject::connect(stream, &QObject::destroyed, &loop, [&pending, &loop, stream]() {
++            pending.remove(stream);
++            if (pending.isEmpty()) {
++                loop.quit();
++            }
++        });
++    }
++
++    if (pending.isEmpty()) {
++        return resources;
++    }
++
++    QTimer::singleShot(120000, &loop, &QEventLoop::quit);
++    loop.exec();
++    return resources;
++}
++
++static int runTransaction(Transaction *tx)
++{
++    if (!tx) {
++        err << "Failed to create transaction\n";
++        err.flush();
++        return 1;
++    }
++    QEventLoop loop;
++    int exitCode = 1;
++    QObject::connect(tx, &Transaction::statusChanged, &loop, [&](Transaction::Status status) {
++        switch (status) {
++        case Transaction::DoneStatus:
++            exitCode = 0;
++            loop.quit();
++            break;
++        case Transaction::DoneWithErrorStatus:
++        case Transaction::CancelledStatus:
++            exitCode = 1;
++            loop.quit();
++            break;
++        default:
++            break;
++        }
++    });
++    if (tx->status() == Transaction::DoneStatus) {
++        return 0;
++    }
++    if (tx->status() == Transaction::DoneWithErrorStatus || tx->status() == Transaction::CancelledStatus) {
++        return 1;
++    }
++    QTimer::singleShot(60 * 60 * 1000, &loop, &QEventLoop::quit);
++    loop.exec();
++    return exitCode;
++}
++
++static void printResource(AbstractResource *res)
++{
++    out << res->packageName() << '\t' << res->name() << '\t';
++    switch (res->state()) {
++    case AbstractResource::Broken:
++        out << "broken";
++        break;
++    case AbstractResource::None:
++        out << "available";
++        break;
++    case AbstractResource::Installed:
++        out << "installed";
++        break;
++    case AbstractResource::Upgradeable:
++        out << "upgradeable";
++        break;
++    }
++    out << '\t' << res->installedVersion() << '\t' << res->availableVersion() << '\t' << res->origin() << '\n';
++}
++
++static AbstractResource *findPackage(ResourcesModel *model, const QString &packageName)
++{
++    for (const QString &scheme : {QStringLiteral("dnf"), QStringLiteral("package")}) {
++        AbstractResourcesBackend::Filters filters;
++        filters.resourceUrl = QUrl(scheme + QStringLiteral("://") + packageName);
++        const auto resources = collectSearch(model, filters);
++        for (AbstractResource *res : resources) {
++            if (res->packageName() == packageName) {
++                return res;
++            }
++        }
++    }
++
++    AbstractResourcesBackend::Filters filters;
++    filters.search = packageName;
++    filters.filterMinimumState = false;
++    const auto resources = collectSearch(model, filters);
++    for (AbstractResource *res : resources) {
++        if (res->packageName() == packageName) {
++            return res;
++        }
++    }
++    return nullptr;
++}
++
++int main(int argc, char **argv)
++{
++    QCoreApplication app(argc, argv);
++    KLocalizedString::setApplicationDomain("plasma-discover-cli");
++
++    KAboutData about(QStringLiteral("plasma-discover-cli"),
++                     i18n("Discover CLI"),
++                     version,
++                     i18n("Command-line interface to Discover package backends"),
++                     KAboutLicense::GPL,
++                     i18n("© 2026"));
++    about.setProductName("discover/cli");
++
++    QCommandLineParser parser;
++    parser.setApplicationDescription(i18n("Test and automate Discover backends (especially DNF)"));
++    parser.addHelpOption();
++    parser.addVersionOption();
++    parser.addPositionalArgument(QStringLiteral("command"),
++                                 i18n("Command: list, search, install, remove, updates, check-updates, sources, backends"),
++                                 QStringLiteral("command"));
++    parser.addPositionalArgument(QStringLiteral("args"), i18n("Command arguments"), QStringLiteral("[args...]"));
++
++    DiscoverBackendsFactory::setupCommandLine(&parser);
++    about.setupCommandLine(&parser);
++    parser.process(app);
++    about.processCommandLine(&parser);
++    DiscoverBackendsFactory::processCommandLine(&parser, false);
++
++    const QStringList positional = parser.positionalArguments();
++    if (positional.isEmpty()) {
++        parser.showHelp(1);
++    }
++
++    const QString command = positional.at(0);
++    const QStringList args = positional.mid(1);
++
++    ResourcesModel *model = ResourcesModel::global();
++    waitForBackendsReady(model);
++
++    int exitCode = 0;
++
++    if (command == u"backends") {
++        for (AbstractResourcesBackend *b : model->backends()) {
++            out << b->name() << '\t' << b->displayName() << '\t' << (b->isValid() ? "valid" : "invalid") << "\tfetching=" << b->fetchingUpdatesProgress()
++                << '\n';
++        }
++    } else if (command == u"list" || command == u"search") {
++        AbstractResourcesBackend::Filters filters;
++        if (!args.isEmpty()) {
++            filters.search = args.join(QLatin1Char(' '));
++        }
++        filters.filterMinimumState = false;
++        const auto resources = collectSearch(model, filters);
++        out << "# package\tname\tstate\tinstalled\tavailable\torigin\n";
++        for (AbstractResource *res : resources) {
++            printResource(res);
++        }
++        out << "# count: " << resources.size() << '\n';
++    } else if (command == u"updates" || command == u"check-updates") {
++        for (AbstractResourcesBackend *b : model->backends()) {
++            b->checkForUpdates();
++        }
++        waitForBackendsReady(model);
++
++        AbstractResourcesBackend::Filters filters;
++        filters.state = AbstractResource::Upgradeable;
++        filters.filterMinimumState = true;
++        const auto resources = collectSearch(model, filters);
++        out << "# upgradeable packages\n";
++        for (AbstractResource *res : resources) {
++            printResource(res);
++        }
++        out << "# updates: " << resources.size() << '\n';
++        for (AbstractResourcesBackend *b : model->backends()) {
++            out << "# backend " << b->name() << " updatesCount=" << b->updatesCount() << '\n';
++        }
++    } else if (command == u"install" || command == u"remove") {
++        if (args.isEmpty()) {
++            err << "Package name required\n";
++            err.flush();
++            return 1;
++        }
++        const QString packageName = args.at(0);
++        AbstractResource *target = findPackage(model, packageName);
++        if (!target) {
++            err << "Package not found: " << packageName << '\n';
++            err.flush();
++            return 1;
++        }
++        out << (command == u"install" ? "Installing " : "Removing ") << target->packageName() << " via " << target->backend()->name() << '\n';
++        out.flush();
++        Transaction *tx = (command == u"install") ? target->backend()->installApplication(target) : target->backend()->removeApplication(target);
++        exitCode = runTransaction(tx);
++    } else if (command == u"sources") {
++        SourcesModel *sources = SourcesModel::global();
++        for (int i = 0; i < sources->rowCount(); ++i) {
++            const QModelIndex idx = sources->index(i, 0);
++            out << sources->data(idx, Qt::DisplayRole).toString() << '\n';
++        }
++    } else {
++        err << "Unknown command: " << command << '\n';
++        err.flush();
++        parser.showHelp(1);
++    }
++
++    out.flush();
++    // Avoid teardown crashes from backend-owned resources; exit immediately.
++    ::_Exit(exitCode);
++}
+diff --git a/libdiscover/backends/CMakeLists.txt b/libdiscover/backends/CMakeLists.txt
+index b8e291e..cc71838 100644
+--- a/libdiscover/backends/CMakeLists.txt
++++ b/libdiscover/backends/CMakeLists.txt
+@@ -97,3 +97,17 @@ option(BUILD_AlpineApkBackend "Build Alpine APK support." "ON")
+ if(BUILD_AlpineApkBackend AND ApkQt_FOUND)
+     add_subdirectory(AlpineApkBackend)
+ endif()
++
++pkg_check_modules(LibDnf5 IMPORTED_TARGET libdnf5)
++set_package_properties(LibDnf5 PROPERTIES
++    DESCRIPTION "Package management library for DNF 5"
++    URL "https://github.com/rpm-software-management/dnf5"
++    PURPOSE "Required to build the native DNF 5 backend"
++    TYPE OPTIONAL)
++
++option(BUILD_DnfBackend "Build native DNF 5 backend." "ON")
++if (BUILD_DnfBackend AND LibDnf5_FOUND AND AppStreamQt_FOUND)
++    add_subdirectory(DnfBackend)
++elseif (BUILD_DnfBackend)
++    message(WARNING "BUILD_DnfBackend enabled but libdnf5=${LibDnf5_FOUND} or AppStreamQt=${AppStreamQt_FOUND} not found")
++endif()
+diff --git a/libdiscover/backends/DnfBackend/CMakeLists.txt b/libdiscover/backends/DnfBackend/CMakeLists.txt
+new file mode 100644
+index 0000000..85d64bc
+--- /dev/null
++++ b/libdiscover/backends/DnfBackend/CMakeLists.txt
+@@ -0,0 +1,64 @@
++find_package(KF6Auth CONFIG REQUIRED)
++
++pkg_check_modules(LibDnf5 REQUIRED IMPORTED_TARGET libdnf5)
++
++set(dnfbackend_SRCS
++    DnfBackend.cpp
++    DnfBackend.h
++    DnfContext.cpp
++    DnfContext.h
++    DnfResource.cpp
++    DnfResource.h
++    DnfSourcesBackend.cpp
++    DnfSourcesBackend.h
++    DnfTransaction.cpp
++    DnfTransaction.h
++)
++
++ecm_qt_declare_logging_category(
++    dnfbackend_SRCS
++    HEADER dnf_backend_logging.h
++    IDENTIFIER LOG_DNF
++    CATEGORY_NAME org.kde.plasma.discover.dnf
++    DEFAULT_SEVERITY Debug
++    DESCRIPTION "libdiscover (backend - DNF)"
++    EXPORT DISCOVER
++)
++
++kcoreaddons_add_plugin(dnf-backend SOURCES ${dnfbackend_SRCS} INSTALL_NAMESPACE "discover")
++kde_target_enable_exceptions(dnf-backend PRIVATE)
++target_link_libraries(dnf-backend
++    PRIVATE
++        Discover::Common
++        Qt::Core
++        Qt::Concurrent
++        KF6::AuthCore
++        KF6::ConfigCore
++        KF6::CoreAddons
++        KF6::I18n
++        AppStreamQt
++        PkgConfig::LibDnf5
++)
++
++# KAuth helper
++add_executable(dnf_kauth_helper
++    DnfAuthHelper.cpp
++    DnfAuthHelper.h
++    DnfContext.cpp
++    DnfContext.h
++    org.kde.discover.dnfbackend.actions
++)
++set_source_files_properties(org.kde.discover.dnfbackend.actions PROPERTIES HEADER_FILE_ONLY ON)
++kde_target_enable_exceptions(dnf_kauth_helper PRIVATE)
++target_link_libraries(dnf_kauth_helper
++    Qt::Core
++    KF6::AuthCore
++    PkgConfig::LibDnf5
++)
++
++kauth_install_actions(org.kde.discover.dnfbackend org.kde.discover.dnfbackend.actions)
++kauth_install_helper_files(dnf_kauth_helper org.kde.discover.dnfbackend root)
++
++install(TARGETS dnf_kauth_helper DESTINATION ${KAUTH_HELPER_INSTALL_DIR})
++
++install(FILES dnf-backend-categories.xml DESTINATION ${KDE_INSTALL_DATADIR}/libdiscover/categories)
+diff --git a/libdiscover/backends/DnfBackend/DnfAuthHelper.cpp b/libdiscover/backends/DnfBackend/DnfAuthHelper.cpp
+new file mode 100644
+index 0000000..0c3ebfd
+--- /dev/null
++++ b/libdiscover/backends/DnfBackend/DnfAuthHelper.cpp
+@@ -0,0 +1,54 @@
++/*
++ *   SPDX-FileCopyrightText: 2026 Discover DNF backend authors
++ *
++ *   SPDX-License-Identifier: GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
++ */
++
++#include "DnfAuthHelper.h"
++#include "DnfContext.h"
++
++#include <KAuth/HelperSupport>
++
++#include <QVariant>
++
++ActionReply DnfAuthHelper::pkgmgmt(const QVariantMap &args)
++{
++    ActionReply reply;
++    const QString action = args.value(QStringLiteral("pkgAction")).toString();
++    const QStringList packages = args.value(QStringLiteral("packages")).toStringList();
++
++    HelperSupport::progressStep(10);
++
++    DnfContext ctx;
++    QString error;
++
++    if (action == QLatin1String("refresh") || action == QLatin1String("update")) {
++        if (!ctx.refresh(&error)) {
++            reply = ActionReply::HelperErrorReply();
++            reply.setErrorDescription(error);
++            reply.addData(QStringLiteral("errorString"), error);
++            return reply;
++        }
++        HelperSupport::progressStep(100);
++        return reply;
++    }
++
++    if (action == QLatin1String("install") || action == QLatin1String("remove") || action == QLatin1String("upgrade")) {
++        HelperSupport::progressStep(20);
++        if (!ctx.runTransaction(action, packages, &error)) {
++            reply = ActionReply::HelperErrorReply();
++            reply.setErrorDescription(error);
++            reply.addData(QStringLiteral("errorString"), error);
++            return reply;
++        }
++        HelperSupport::progressStep(100);
++        return reply;
++    }
++
++    reply = ActionReply::HelperErrorReply();
++    reply.setErrorDescription(QStringLiteral("Unknown pkgAction"));
++    reply.addData(QStringLiteral("errorString"), QStringLiteral("Unknown pkgAction: %1").arg(action));
++    return reply;
++}
++
++KAUTH_HELPER_MAIN("org.kde.discover.dnfbackend", DnfAuthHelper)
+diff --git a/libdiscover/backends/DnfBackend/DnfAuthHelper.h b/libdiscover/backends/DnfBackend/DnfAuthHelper.h
+new file mode 100644
+index 0000000..8cf8fc9
+--- /dev/null
++++ b/libdiscover/backends/DnfBackend/DnfAuthHelper.h
+@@ -0,0 +1,22 @@
++/*
++ *   SPDX-FileCopyrightText: 2026 Discover DNF backend authors
++ *
++ *   SPDX-License-Identifier: GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
++ */
++
++#pragma once
++
++#include <KAuth/ActionReply>
++#include <QObject>
++
++using namespace KAuth;
++
++class DnfAuthHelper : public QObject
++{
++    Q_OBJECT
++public:
++    DnfAuthHelper() = default;
++
++public Q_SLOTS:
++    ActionReply pkgmgmt(const QVariantMap &args);
++};
+diff --git a/libdiscover/backends/DnfBackend/DnfBackend.cpp b/libdiscover/backends/DnfBackend/DnfBackend.cpp
+new file mode 100644
+index 0000000..ab7c56c
+--- /dev/null
++++ b/libdiscover/backends/DnfBackend/DnfBackend.cpp
+@@ -0,0 +1,411 @@
++/*
++ *   SPDX-FileCopyrightText: 2026 Discover DNF backend authors
++ *
++ *   SPDX-License-Identifier: GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
++ */
++
++#include "DnfBackend.h"
++#include "DnfSourcesBackend.h"
++#include "DnfTransaction.h"
++#include "dnf_backend_logging.h"
++
++#include "Category/Category.h"
++#include "appstream/OdrsReviewsBackend.h"
++#include "resources/SourcesModel.h"
++#include "resources/StandardBackendUpdater.h"
++
++#include <AppStreamQt/pool.h>
++#include <KLocalizedString>
++
++#include <QFutureWatcher>
++#include <QTimer>
++#include <QtConcurrentRun>
++
++DISCOVER_BACKEND_PLUGIN(DnfBackend)
++
++DnfBackend::DnfBackend(QObject *parent)
++    : AbstractResourcesBackend(parent)
++    , m_context(new DnfContext)
++    , m_appStreamComponents(AppStream::ComponentBox::Flag::FlagNone)
++    , m_updater(new StandardBackendUpdater(this))
++    , m_reviews(OdrsReviewsBackend::global())
++{
++    connect(m_updater, &StandardBackendUpdater::updatesCountChanged, this, &DnfBackend::updatesCountChanged);
++    connect(m_reviews.data(), &OdrsReviewsBackend::ratingsReady, this, &AbstractResourcesBackend::emitRatingsReady);
++
++    SourcesModel::global()->addSourcesBackend(new DnfSourcesBackend(this));
++
++    m_fetching = true;
++    m_fetchProgress = 10;
++    Q_EMIT fetchingUpdatesProgressChanged();
++
++    auto future = QtConcurrent::run([this]() {
++        return loadInBackground();
++    });
++    // Apply results on the object thread when ready
++    auto *watcher = new QFutureWatcher<LoadResult>(this);
++    connect(watcher, &QFutureWatcher<LoadResult>::finished, this, [this, watcher]() {
++        onLoadFinished(watcher->result());
++        watcher->deleteLater();
++    });
++    watcher->setFuture(future);
++}
++
++DnfBackend::~DnfBackend() = default;
++
++DnfBackend::LoadResult DnfBackend::loadInBackground()
++{
++    LoadResult result;
++    QString error;
++    if (!m_context->load(&error)) {
++        result.ok = false;
++        result.error = error;
++        qCWarning(LOG_DNF) << "Failed to initialize libdnf5:" << error;
++        return result;
++    }
++    result.ok = true;
++
++    AppStream::Pool pool;
++    pool.setFlags(AppStream::Pool::Flags(AppStream::Pool::Flag::FlagLoadOsCatalog | AppStream::Pool::Flag::FlagLoadOsDesktopFiles
++                                         | AppStream::Pool::Flag::FlagLoadOsMetainfo));
++    if (!pool.load()) {
++        qCWarning(LOG_DNF) << "AppStream pool load failed:" << pool.lastError();
++    } else {
++        result.components = pool.components();
++        for (const AppStream::Component &component : std::as_const(result.components)) {
++            const QStringList pkgs = component.packageNames();
++            for (const QString &pkg : pkgs) {
++                if (!result.appstreamByPackage.contains(pkg)) {
++                    result.appstreamByPackage.insert(pkg, component);
++                }
++            }
++        }
++        qCDebug(LOG_DNF) << "Loaded" << result.components.size() << "AppStream components," << result.appstreamByPackage.size() << "package mappings";
++    }
++    return result;
++}
++
++void DnfBackend::onLoadFinished(const LoadResult &result)
++{
++    m_valid = result.ok;
++    if (!m_valid) {
++        m_fetching = false;
++        m_fetchProgress = 100;
++        Q_EMIT fetchingUpdatesProgressChanged();
++        Q_EMIT invalidated();
++        return;
++    }
++
++    m_appStreamComponents = result.components;
++    m_appstreamByPackage = result.appstreamByPackage;
++
++    refreshResourcesFromContext();
++    m_fetching = false;
++    m_fetchProgress = 100;
++    Q_EMIT fetchingUpdatesProgressChanged();
++    Q_EMIT contentsChanged();
++
++    QTimer::singleShot(500, this, &DnfBackend::checkForUpdates);
++}
++
++AppStream::Component DnfBackend::componentForPackage(const QString &packageName) const
++{
++    return m_appstreamByPackage.value(packageName);
++}
++
++AbstractResource::Type DnfBackend::resourceTypeForComponent(const AppStream::Component &component) const
++{
++    switch (component.kind()) {
++    case AppStream::Component::KindDesktopApp:
++    case AppStream::Component::KindConsoleApp:
++    case AppStream::Component::KindWebApp:
++        return AbstractResource::Application;
++    case AppStream::Component::KindAddon:
++        return AbstractResource::Addon;
++    default:
++        return AbstractResource::System;
++    }
++}
++
++DnfResource *DnfBackend::ensureResource(const DnfPackageInfo &info)
++{
++    const QString key = info.name;
++    DnfResource *res = m_resources.value(key);
++    if (res) {
++        res->setPackageInfo(info);
++        return res;
++    }
++
++    const AppStream::Component component = componentForPackage(info.name);
++    const AbstractResource::Type type = component.id().isEmpty() ? AbstractResource::System : resourceTypeForComponent(component);
++    res = new DnfResource(info, component, type, this);
++    m_resources.insert(key, res);
++    connect(res, &DnfResource::stateChanged, this, &DnfBackend::updatesCountChanged);
++    return res;
++}
++
++void DnfBackend::refreshResourcesFromContext()
++{
++    QSet<QString> seen;
++
++    const auto upgradeable = m_context->upgradeablePackages();
++    for (const DnfPackageInfo &info : upgradeable) {
++        ensureResource(info);
++        seen.insert(info.name);
++    }
++
++    for (auto it = m_appstreamByPackage.constBegin(); it != m_appstreamByPackage.constEnd(); ++it) {
++        if (seen.contains(it.key())) {
++            continue;
++        }
++        auto pkg = m_context->findPackage(it.key());
++        if (pkg) {
++            ensureResource(*pkg);
++            seen.insert(it.key());
++        }
++    }
++
++    const auto installed = m_context->installedPackages();
++    for (const DnfPackageInfo &info : installed) {
++        if (seen.contains(info.name)) {
++            if (DnfResource *res = m_resources.value(info.name)) {
++                // Preserve upgradeable flag if already set
++                DnfPackageInfo copy = info;
++                if (res->state() == AbstractResource::Upgradeable) {
++                    copy.upgradeable = true;
++                    copy.availableVersion = res->availableVersion();
++                }
++                res->setPackageInfo(copy);
++            }
++            continue;
++        }
++        ensureResource(info);
++        seen.insert(info.name);
++    }
++
++    qCDebug(LOG_DNF) << "Resources loaded:" << m_resources.size();
++}
++
++bool DnfBackend::isValid() const
++{
++    return true; // Always load; empty if libdnf5 init failed
++}
++
++ResultsStream *DnfBackend::search(const Filters &filter)
++{
++    if (!filter.resourceUrl.isEmpty()) {
++        return findResourceByPackageName(filter.resourceUrl);
++    }
++
++    QVector<StreamResult> results;
++
++    if (!filter.search.isEmpty() && m_context && m_context->isLoaded()) {
++        const auto matches = m_context->searchPackages(filter.search, 500);
++        for (const DnfPackageInfo &info : matches) {
++            ensureResource(info);
++        }
++    }
++
++    for (DnfResource *resource : std::as_const(m_resources)) {
++        if (filter.filterMinimumState && resource->state() < filter.state) {
++            continue;
++        }
++
++        if (resource->type() == AbstractResource::System && filter.state != AbstractResource::Upgradeable && filter.search.isEmpty()
++            && filter.state != AbstractResource::Installed) {
++            continue;
++        }
++
++        if (!filter.search.isEmpty()) {
++            if (!resource->name().contains(filter.search, Qt::CaseInsensitive) && !resource->packageName().contains(filter.search, Qt::CaseInsensitive)
++                && !resource->comment().contains(filter.search, Qt::CaseInsensitive)) {
++                continue;
++            }
++        }
++
++        if (filter.category && !resource->categoryMatches(filter.category)) {
++            continue;
++        }
++
++        results += resource;
++    }
++
++    return new ResultsStream(QStringLiteral("DnfStream"), results);
++}
++
++ResultsStream *DnfBackend::findResourceByPackageName(const QUrl &searchUrl)
++{
++    DnfResource *result = nullptr;
++
++    if (searchUrl.scheme() == QLatin1String("appstream")) {
++        const QString id = searchUrl.host().isEmpty() ? searchUrl.path().mid(1) : searchUrl.host() + searchUrl.path();
++        for (DnfResource *res : std::as_const(m_resources)) {
++            if (res->appstreamId() == id || res->appstreamId() == searchUrl.host()) {
++                result = res;
++                break;
++            }
++        }
++        if (!result) {
++            for (auto it = m_appstreamByPackage.constBegin(); it != m_appstreamByPackage.constEnd(); ++it) {
++                if (it.value().id() == searchUrl.host() || it.value().id() == id) {
++                    auto pkg = m_context->findPackage(it.key());
++                    if (pkg) {
++                        result = ensureResource(*pkg);
++                    }
++                    break;
++                }
++            }
++        }
++    } else if (searchUrl.scheme() == QLatin1String("dnf") || searchUrl.scheme() == QLatin1String("package")) {
++        const QString name = searchUrl.host().isEmpty() ? searchUrl.path().mid(1) : searchUrl.host();
++        result = m_resources.value(name);
++        if (!result && m_context) {
++            auto pkg = m_context->findPackage(name);
++            if (pkg) {
++                result = ensureResource(*pkg);
++            }
++        }
++    }
++
++    if (!result) {
++        return new ResultsStream(QStringLiteral("DnfStream"), {});
++    }
++    return new ResultsStream(QStringLiteral("DnfStream"), {result});
++}
++
++AbstractReviewsBackend *DnfBackend::reviewsBackend() const
++{
++    return m_reviews.data();
++}
++
++AbstractBackendUpdater *DnfBackend::backendUpdater() const
++{
++    return m_updater;
++}
++
++int DnfBackend::updatesCount() const
++{
++    return m_updater->updatesCount();
++}
++
++Transaction *DnfBackend::installApplication(AbstractResource *app)
++{
++    return installApplication(app, {});
++}
++
++Transaction *DnfBackend::installApplication(AbstractResource *app, const AddonList &addons)
++{
++    Q_UNUSED(addons)
++    return new DnfTransaction(qobject_cast<DnfResource *>(app), Transaction::InstallRole);
++}
++
++Transaction *DnfBackend::removeApplication(AbstractResource *app)
++{
++    return new DnfTransaction(qobject_cast<DnfResource *>(app), Transaction::RemoveRole);
++}
++
++void DnfBackend::checkForUpdates()
++{
++    if (!m_context || !m_context->isLoaded()) {
++        return;
++    }
++
++    m_fetching = true;
++    m_fetchProgress = 20;
++    Q_EMIT fetchingUpdatesProgressChanged();
++
++    auto future = QtConcurrent::run([ctx = m_context]() {
++        QString error;
++        ctx->refresh(&error);
++        return error;
++    });
++    auto *watcher = new QFutureWatcher<QString>(this);
++    connect(watcher, &QFutureWatcher<QString>::finished, this, [this, watcher]() {
++        const QString error = watcher->result();
++        if (!error.isEmpty()) {
++            qCWarning(LOG_DNF) << "refresh:" << error;
++        }
++        const auto upgradeable = m_context->upgradeablePackages();
++        QSet<QString> upNames;
++        for (const DnfPackageInfo &info : upgradeable) {
++            upNames.insert(info.name);
++            ensureResource(info);
++        }
++        for (DnfResource *res : std::as_const(m_resources)) {
++            if (!upNames.contains(res->packageName()) && res->state() == AbstractResource::Upgradeable) {
++                auto pkg = m_context->findPackage(res->packageName());
++                if (pkg) {
++                    res->setPackageInfo(*pkg);
++                }
++            }
++        }
++        m_fetching = false;
++        m_fetchProgress = 100;
++        Q_EMIT fetchingUpdatesProgressChanged();
++        Q_EMIT updatesCountChanged();
++        Q_EMIT contentsChanged();
++        watcher->deleteLater();
++    });
++    watcher->setFuture(future);
++}
++
++QString DnfBackend::displayName() const
++{
++    return i18n("DNF");
++}
++
++bool DnfBackend::hasApplications() const
++{
++    return true;
++}
++
++int DnfBackend::fetchingUpdatesProgress() const
++{
++    return m_fetchProgress;
++}
++
++QList<std::shared_ptr<Category>> DnfBackend::category() const
++{
++    static CategoryFilter flt{CategoryFilter::FilterType::CategoryNameFilter, QLatin1String("dnf_packages")};
++    static std::shared_ptr<Category> root(std::make_shared<Category>(i18nc("Root category name", "RPM packages (DNF)"),
++                                                                     QStringLiteral("package-x-generic"),
++                                                                     flt,
++                                                                     QSet<QString>{QStringLiteral("DNF")},
++                                                                     QList<std::shared_ptr<Category>>{}));
++    return {root};
++}
++
++DnfResource *DnfBackend::resourceForPackage(const QString &name) const
++{
++    return m_resources.value(name);
++}
++
++void DnfBackend::markTransactionFinished(DnfResource *resource, Transaction::Role role, bool success)
++{
++    if (!success || !resource) {
++        return;
++    }
++    // Reload package metadata after transaction
++    m_context->refresh(nullptr);
++    auto pkg = m_context->findPackage(resource->packageName());
++    if (pkg) {
++        if (role == Transaction::RemoveRole) {
++            pkg->installed = false;
++            pkg->upgradeable = false;
++            pkg->installedVersion.clear();
++        }
++        resource->setPackageInfo(*pkg);
++    } else if (role == Transaction::RemoveRole) {
++        resource->setState(AbstractResource::None);
++    }
++    Q_EMIT resourcesChanged(resource, {"state", "status", "installedVersion", "availableVersion", "size"});
++    Q_EMIT updatesCountChanged();
++}
++
++void DnfBackend::setFetchingProgress(int progress)
++{
++    m_fetchProgress = progress;
++    Q_EMIT fetchingUpdatesProgressChanged();
++}
++
++#include "DnfBackend.moc"
+diff --git a/libdiscover/backends/DnfBackend/DnfBackend.h b/libdiscover/backends/DnfBackend/DnfBackend.h
+new file mode 100644
+index 0000000..011715c
+--- /dev/null
++++ b/libdiscover/backends/DnfBackend/DnfBackend.h
+@@ -0,0 +1,79 @@
++/*
++ *   SPDX-FileCopyrightText: 2026 Discover DNF backend authors
++ *
++ *   SPDX-License-Identifier: GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
++ */
++
++#pragma once
++
++#include "DnfContext.h"
++#include "DnfResource.h"
++
++#include <Transaction/Transaction.h>
++
++#include <QHash>
++#include <QSharedPointer>
++
++#include <AppStreamQt/component-box.h>
++#include <resources/AbstractResourcesBackend.h>
++
++class StandardBackendUpdater;
++class OdrsReviewsBackend;
++
++class DnfBackend : public AbstractResourcesBackend
++{
++    Q_OBJECT
++public:
++    explicit DnfBackend(QObject *parent = nullptr);
++    ~DnfBackend() override;
++
++    bool isValid() const override;
++    ResultsStream *search(const Filters &filter) override;
++    ResultsStream *findResourceByPackageName(const QUrl &search);
++    AbstractReviewsBackend *reviewsBackend() const override;
++    AbstractBackendUpdater *backendUpdater() const override;
++    int updatesCount() const override;
++    Transaction *installApplication(AbstractResource *app) override;
++    Transaction *installApplication(AbstractResource *app, const AddonList &addons) override;
++    Transaction *removeApplication(AbstractResource *app) override;
++    void checkForUpdates() override;
++    QString displayName() const override;
++    bool hasApplications() const override;
++    int fetchingUpdatesProgress() const override;
++    QList<std::shared_ptr<Category>> category() const override;
++
++    DnfContext *context()
++    {
++        return m_context.data();
++    }
++    DnfResource *resourceForPackage(const QString &name) const;
++    void refreshResourcesFromContext();
++    void markTransactionFinished(DnfResource *resource, Transaction::Role role, bool success);
++
++public Q_SLOTS:
++    void setFetchingProgress(int progress);
++
++private:
++    struct LoadResult {
++        bool ok = false;
++        QString error;
++        QHash<QString, AppStream::Component> appstreamByPackage;
++        AppStream::ComponentBox components{AppStream::ComponentBox::Flag::FlagNone};
++    };
++
++    LoadResult loadInBackground();
++    void onLoadFinished(const LoadResult &result);
++    DnfResource *ensureResource(const DnfPackageInfo &info);
++    AbstractResource::Type resourceTypeForComponent(const AppStream::Component &component) const;
++    AppStream::Component componentForPackage(const QString &packageName) const;
++
++    QSharedPointer<DnfContext> m_context;
++    QHash<QString, DnfResource *> m_resources;
++    QHash<QString, AppStream::Component> m_appstreamByPackage;
++    AppStream::ComponentBox m_appStreamComponents;
++    StandardBackendUpdater *m_updater = nullptr;
++    QSharedPointer<OdrsReviewsBackend> m_reviews;
++    int m_fetchProgress = 0;
++    bool m_fetching = true;
++    bool m_valid = false;
++};
+diff --git a/libdiscover/backends/DnfBackend/DnfContext.cpp b/libdiscover/backends/DnfBackend/DnfContext.cpp
+new file mode 100644
+index 0000000..4b078f9
+--- /dev/null
++++ b/libdiscover/backends/DnfBackend/DnfContext.cpp
+@@ -0,0 +1,455 @@
++/*
++ *   SPDX-FileCopyrightText: 2026 Discover DNF backend authors
++ *
++ *   SPDX-License-Identifier: GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
++ */
++
++#include "DnfContext.h"
++
++#include <QMutexLocker>
++#include <unistd.h>
++
++#include <libdnf5/common/sack/query_cmp.hpp>
++#include <libdnf5/conf/option.hpp>
++#include <libdnf5/repo/config_repo.hpp>
++#include <libdnf5/utils/locker.hpp>
++
++#include <map>
++#include <set>
++
++using libdnf5::sack::QueryCmp;
++
++static QString fromStd(const std::string &s)
++{
++    return QString::fromStdString(s);
++}
++
++DnfContext::DnfContext() = default;
++
++DnfContext::~DnfContext() = default;
++
++std::unique_ptr<libdnf5::Base> DnfContext::createBase(QString *error) const
++{
++    try {
++        auto base = std::make_unique<libdnf5::Base>();
++        base->load_config();
++        // Avoid loading host plugins that may fail in constrained environments
++        // but keep normal behavior when plugins work; leave plugins enabled by default.
++        base->setup();
++        auto repo_sack = base->get_repo_sack();
++        repo_sack->create_repos_from_system_configuration();
++        // Read lock is enough for queries; transactions take write lock separately.
++        base->lock_system_repo(libdnf5::utils::LockAccess::READ, libdnf5::utils::LockBlocking::BLOCKING);
++        repo_sack->load_repos();
++        return base;
++    } catch (const std::exception &e) {
++        if (error) {
++            *error = QString::fromUtf8(e.what());
++        }
++        return nullptr;
++    }
++}
++
++bool DnfContext::setupBase(QString *error)
++{
++    m_base = createBase(error);
++    m_loaded = static_cast<bool>(m_base);
++    return m_loaded;
++}
++
++bool DnfContext::load(QString *error)
++{
++    QMutexLocker lock(&m_mutex);
++    m_base.reset();
++    m_loaded = false;
++    return setupBase(error);
++}
++
++bool DnfContext::refresh(QString *error)
++{
++    // Recreate Base so load_repos can run again (metadata will be refreshed if stale).
++    return load(error);
++}
++
++DnfPackageInfo DnfContext::packageToInfo(const libdnf5::rpm::Package &pkg, bool installed, bool upgradeable) const
++{
++    DnfPackageInfo info;
++    info.name = fromStd(pkg.get_name());
++    info.arch = fromStd(pkg.get_arch());
++    info.summary = fromStd(pkg.get_summary());
++    info.description = fromStd(pkg.get_description());
++    info.license = fromStd(pkg.get_license());
++    info.availableVersion = fromStd(pkg.get_evr());
++    info.repoId = fromStd(pkg.get_repo_id());
++    info.url = fromStd(pkg.get_url());
++    info.downloadSize = pkg.get_download_size();
++    info.installSize = pkg.get_install_size();
++    info.installed = installed;
++    info.upgradeable = upgradeable;
++    if (installed || upgradeable) {
++        // Prefer installed EVR from installed package if available later by caller
++        info.installedVersion = info.availableVersion;
++    }
++    return info;
++}
++
++QVector<DnfPackageInfo> DnfContext::allLatestPackages() const
++{
++    QMutexLocker lock(&m_mutex);
++    QVector<DnfPackageInfo> result;
++    if (!m_base) {
++        return result;
++    }
++
++    try {
++        std::set<std::string> upgradeableNames;
++        {
++            libdnf5::rpm::PackageQuery upq(*m_base);
++            upq.filter_upgradable();
++            for (const auto &pkg : upq) {
++                upgradeableNames.insert(pkg.get_name());
++            }
++        }
++
++        std::map<std::string, std::string> installedEvr;
++        {
++            libdnf5::rpm::PackageQuery inst(*m_base);
++            inst.filter_installed();
++            for (const auto &pkg : inst) {
++                installedEvr[pkg.get_name()] = pkg.get_evr();
++            }
++        }
++
++        libdnf5::rpm::PackageQuery query(*m_base);
++        query.filter_latest_evr();
++        result.reserve(20000);
++        for (const auto &pkg : query) {
++            // Skip pure installed-only entries that have a newer available version represented separately;
++            // filter_latest_evr returns latest per name.arch including from @System.
++            const auto name = pkg.get_name();
++            const bool isInstalled = pkg.is_installed();
++            const bool upgradeable = upgradeableNames.count(name) > 0;
++
++            // Prefer available (non-system) package as the "latest" display entry when both exist.
++            // When iterating latest_evr we get one per name+arch; if installed is latest, it's the installed one.
++            DnfPackageInfo info = packageToInfo(pkg, isInstalled || installedEvr.count(name), upgradeable);
++            auto it = installedEvr.find(name);
++            if (it != installedEvr.end()) {
++                info.installed = true;
++                info.installedVersion = fromStd(it->second);
++                if (!isInstalled) {
++                    info.availableVersion = fromStd(pkg.get_evr());
++                }
++            }
++            if (upgradeable && !isInstalled) {
++                info.upgradeable = true;
++            }
++            if (upgradeable && isInstalled) {
++                // Will be superseded by available package if present; still mark for updates count
++                info.upgradeable = true;
++            }
++            result.push_back(std::move(info));
++        }
++    } catch (const std::exception &) {
++        // return what we have
++    }
++    return result;
++}
++
++QVector<DnfPackageInfo> DnfContext::searchPackages(const QString &term, int limit) const
++{
++    QMutexLocker lock(&m_mutex);
++    QVector<DnfPackageInfo> result;
++    if (!m_base || term.isEmpty()) {
++        return result;
++    }
++
++    try {
++        std::set<std::string> upgradeableNames;
++        {
++            libdnf5::rpm::PackageQuery upq(*m_base);
++            upq.filter_upgradable();
++            for (const auto &pkg : upq) {
++                upgradeableNames.insert(pkg.get_name());
++            }
++        }
++        std::map<std::string, std::string> installedEvr;
++        {
++            libdnf5::rpm::PackageQuery inst(*m_base);
++            inst.filter_installed();
++            for (const auto &pkg : inst) {
++                installedEvr[pkg.get_name()] = pkg.get_evr();
++            }
++        }
++
++        libdnf5::rpm::PackageQuery query(*m_base);
++        query.filter_name(term.toStdString(), QueryCmp::ICONTAINS);
++        query.filter_latest_evr();
++
++        int count = 0;
++        for (const auto &pkg : query) {
++            const auto name = pkg.get_name();
++            DnfPackageInfo info = packageToInfo(pkg, installedEvr.count(name) > 0, upgradeableNames.count(name) > 0);
++            auto it = installedEvr.find(name);
++            if (it != installedEvr.end()) {
++                info.installedVersion = fromStd(it->second);
++            }
++            result.push_back(std::move(info));
++            if (++count >= limit) {
++                break;
++            }
++        }
++    } catch (const std::exception &) {
++    }
++    return result;
++}
++
++QVector<DnfPackageInfo> DnfContext::installedPackages() const
++{
++    QMutexLocker lock(&m_mutex);
++    QVector<DnfPackageInfo> result;
++    if (!m_base) {
++        return result;
++    }
++    try {
++        std::set<std::string> upgradeableNames;
++        {
++            libdnf5::rpm::PackageQuery upq(*m_base);
++            upq.filter_upgradable();
++            for (const auto &pkg : upq) {
++                upgradeableNames.insert(pkg.get_name());
++            }
++        }
++
++        libdnf5::rpm::PackageQuery query(*m_base);
++        query.filter_installed();
++        for (const auto &pkg : query) {
++            DnfPackageInfo info = packageToInfo(pkg, true, upgradeableNames.count(pkg.get_name()) > 0);
++            info.installedVersion = fromStd(pkg.get_evr());
++            if (info.upgradeable) {
++                // available version from upgradeable query ideally; leave EVR as installed for now
++            }
++            result.push_back(std::move(info));
++        }
++    } catch (const std::exception &) {
++    }
++    return result;
++}
++
++QVector<DnfPackageInfo> DnfContext::upgradeablePackages() const
++{
++    QMutexLocker lock(&m_mutex);
++    QVector<DnfPackageInfo> result;
++    if (!m_base) {
++        return result;
++    }
++    try {
++        std::map<std::string, std::string> installedEvr;
++        {
++            libdnf5::rpm::PackageQuery inst(*m_base);
++            inst.filter_installed();
++            for (const auto &pkg : inst) {
++                installedEvr[pkg.get_name()] = pkg.get_evr();
++            }
++        }
++
++        libdnf5::rpm::PackageQuery query(*m_base);
++        query.filter_upgradable();
++        query.filter_latest_evr();
++        for (const auto &pkg : query) {
++            DnfPackageInfo info = packageToInfo(pkg, true, true);
++            auto it = installedEvr.find(pkg.get_name());
++            if (it != installedEvr.end()) {
++                info.installedVersion = fromStd(it->second);
++            }
++            info.availableVersion = fromStd(pkg.get_evr());
++            result.push_back(std::move(info));
++        }
++    } catch (const std::exception &) {
++    }
++    return result;
++}
++
++std::optional<DnfPackageInfo> DnfContext::findPackage(const QString &name) const
++{
++    QMutexLocker lock(&m_mutex);
++    if (!m_base || name.isEmpty()) {
++        return std::nullopt;
++    }
++    try {
++        const bool upgradeable = [&]() {
++            libdnf5::rpm::PackageQuery upq(*m_base);
++            upq.filter_name(name.toStdString());
++            upq.filter_upgradable();
++            return !upq.empty();
++        }();
++
++        std::string installedEvr;
++        {
++            libdnf5::rpm::PackageQuery inst(*m_base);
++            inst.filter_name(name.toStdString());
++            inst.filter_installed();
++            if (!inst.empty()) {
++                installedEvr = (*inst.begin()).get_evr();
++            }
++        }
++
++        libdnf5::rpm::PackageQuery query(*m_base);
++        query.filter_name(name.toStdString());
++        query.filter_latest_evr();
++        if (query.empty()) {
++            return std::nullopt;
++        }
++        // Prefer not-installed (available) package for latest version info
++        libdnf5::rpm::Package chosen = *query.begin();
++        for (const auto &pkg : query) {
++            if (!pkg.is_installed()) {
++                chosen = pkg;
++                break;
++            }
++        }
++        DnfPackageInfo info = packageToInfo(chosen, !installedEvr.empty(), upgradeable);
++        if (!installedEvr.empty()) {
++            info.installedVersion = fromStd(installedEvr);
++        }
++        return info;
++    } catch (const std::exception &) {
++        return std::nullopt;
++    }
++}
++
++QVector<DnfRepoInfo> DnfContext::repositories() const
++{
++    QMutexLocker lock(&m_mutex);
++    QVector<DnfRepoInfo> result;
++    if (!m_base) {
++        return result;
++    }
++    try {
++        libdnf5::repo::RepoQuery query(*m_base);
++        for (const auto &repo : query) {
++            DnfRepoInfo info;
++            info.id = fromStd(repo->get_id());
++            info.name = fromStd(repo->get_name());
++            info.enabled = repo->is_enabled();
++            const auto &urls = repo->get_config().get_baseurl_option().get_value();
++            if (!urls.empty()) {
++                info.baseurl = fromStd(urls.front());
++            }
++            result.push_back(std::move(info));
++        }
++    } catch (const std::exception &) {
++    }
++    return result;
++}
++
++bool DnfContext::runTransaction(const QString &action, const QStringList &packages, QString *error)
++{
++    // Transactions need a fresh Base with write lock
++    std::unique_ptr<libdnf5::Base> base;
++    try {
++        base = std::make_unique<libdnf5::Base>();
++        base->load_config();
++        base->setup();
++        auto repo_sack = base->get_repo_sack();
++        repo_sack->create_repos_from_system_configuration();
++        base->lock_system_repo(libdnf5::utils::LockAccess::WRITE, libdnf5::utils::LockBlocking::BLOCKING);
++        repo_sack->load_repos();
++
++        libdnf5::Goal goal(*base);
++        if (action == QLatin1String("install")) {
++            for (const QString &pkg : packages) {
++                goal.add_install(pkg.toStdString());
++            }
++        } else if (action == QLatin1String("remove")) {
++            for (const QString &pkg : packages) {
++                goal.add_remove(pkg.toStdString());
++            }
++        } else if (action == QLatin1String("upgrade")) {
++            if (packages.isEmpty()) {
++                goal.add_upgrade("*");
++            } else {
++                for (const QString &pkg : packages) {
++                    goal.add_upgrade(pkg.toStdString());
++                }
++            }
++        } else {
++            if (error) {
++                *error = QStringLiteral("Unknown action: %1").arg(action);
++            }
++            return false;
++        }
++
++        auto transaction = goal.resolve();
++        if (transaction.get_problems() != libdnf5::GoalProblem::NO_PROBLEM) {
++            if (error) {
++                const auto logs = transaction.get_resolve_logs_as_strings();
++                QStringList msgs;
++                for (const auto &l : logs) {
++                    msgs << fromStd(l);
++                }
++                *error = msgs.join(QLatin1Char('\n'));
++            }
++            return false;
++        }
++
++        transaction.download();
++        transaction.set_description("plasma-discover dnf-backend");
++        const auto result = transaction.run();
++        if (result != libdnf5::base::Transaction::TransactionRunResult::SUCCESS) {
++            if (error) {
++                *error = QStringLiteral("Transaction failed");
++            }
++            return false;
++        }
++    } catch (const std::exception &e) {
++        if (error) {
++            *error = QString::fromUtf8(e.what());
++        }
++        return false;
++    }
++
++    // Reload read-only context after successful mutation
++    {
++        QMutexLocker lock(&m_mutex);
++        m_base.reset();
++        m_loaded = false;
++        setupBase(nullptr);
++    }
++    return true;
++}
++
++bool DnfContext::setRepositoryEnabled(const QString &repoId, bool enabled, QString *error)
++{
++    // Enabling/disabling in memory only for the current session; persist by writing .repo is complex.
++    // For Discover we toggle in the active Base and also try to update the on-disk config via dnf option.
++    QMutexLocker lock(&m_mutex);
++    if (!m_base) {
++        if (error) {
++            *error = QStringLiteral("DNF context not loaded");
++        }
++        return false;
++    }
++    try {
++        libdnf5::repo::RepoQuery query(*m_base);
++        query.filter_id(repoId.toStdString());
++        if (query.empty()) {
++            if (error) {
++                *error = QStringLiteral("Repository not found: %1").arg(repoId);
++            }
++            return false;
++        }
++        auto repo = *query.begin();
++        if (enabled) {
++            repo->enable();
++        } else {
++            repo->disable();
++        }
++        return true;
++    } catch (const std::exception &e) {
++        if (error) {
++            *error = QString::fromUtf8(e.what());
++        }
++        return false;
++    }
++}
+diff --git a/libdiscover/backends/DnfBackend/DnfContext.h b/libdiscover/backends/DnfBackend/DnfContext.h
+new file mode 100644
+index 0000000..279f584
+--- /dev/null
++++ b/libdiscover/backends/DnfBackend/DnfContext.h
+@@ -0,0 +1,91 @@
++/*
++ *   SPDX-FileCopyrightText: 2026 Discover DNF backend authors
++ *
++ *   SPDX-License-Identifier: GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
++ */
++
++#pragma once
++
++#include <QMutex>
++#include <QString>
++#include <QStringList>
++#include <QVector>
++#include <memory>
++#include <optional>
++#include <string>
++#include <vector>
++
++#include <libdnf5/base/base.hpp>
++#include <libdnf5/base/goal.hpp>
++#include <libdnf5/base/transaction.hpp>
++#include <libdnf5/repo/repo_query.hpp>
++#include <libdnf5/rpm/package_query.hpp>
++
++struct DnfPackageInfo {
++    QString name;
++    QString arch;
++    QString summary;
++    QString description;
++    QString license;
++    QString availableVersion;
++    QString installedVersion;
++    QString repoId;
++    QString url;
++    quint64 downloadSize = 0;
++    quint64 installSize = 0;
++    bool installed = false;
++    bool upgradeable = false;
++};
++
++struct DnfRepoInfo {
++    QString id;
++    QString name;
++    QString baseurl;
++    bool enabled = true;
++};
++
++/**
++ * Thin wrapper around libdnf5::Base providing thread-safe access for the Discover backend.
++ * load_repos() can only be called once per Base instance, so reload() recreates Base.
++ */
++class DnfContext
++{
++public:
++    DnfContext();
++    ~DnfContext();
++
++    /// Initialize / reload configuration and repositories. Thread-safe.
++    bool load(QString *error = nullptr);
++
++    /// Refresh metadata then reload. Prefer calling from a worker thread.
++    bool refresh(QString *error = nullptr);
++
++    QVector<DnfPackageInfo> allLatestPackages() const;
++    QVector<DnfPackageInfo> searchPackages(const QString &term, int limit = 500) const;
++    QVector<DnfPackageInfo> installedPackages() const;
++    QVector<DnfPackageInfo> upgradeablePackages() const;
++    std::optional<DnfPackageInfo> findPackage(const QString &name) const;
++
++    QVector<DnfRepoInfo> repositories() const;
++
++    /// Run install/remove/upgrade using libdnf5. Requires privileges for system changes.
++    /// @param action "install" | "remove" | "upgrade"
++    /// @param packages package names (empty for full upgrade when action is "upgrade")
++    bool runTransaction(const QString &action, const QStringList &packages, QString *error = nullptr);
++
++    bool setRepositoryEnabled(const QString &repoId, bool enabled, QString *error = nullptr);
++
++    bool isLoaded() const
++    {
++        return m_loaded;
++    }
++
++private:
++    DnfPackageInfo packageToInfo(const libdnf5::rpm::Package &pkg, bool installed, bool upgradeable) const;
++    bool setupBase(QString *error);
++    std::unique_ptr<libdnf5::Base> createBase(QString *error) const;
++
++    mutable QMutex m_mutex;
++    std::unique_ptr<libdnf5::Base> m_base;
++    bool m_loaded = false;
++};
+diff --git a/libdiscover/backends/DnfBackend/DnfResource.cpp b/libdiscover/backends/DnfBackend/DnfResource.cpp
+new file mode 100644
+index 0000000..9f5d1cb
+--- /dev/null
++++ b/libdiscover/backends/DnfBackend/DnfResource.cpp
+@@ -0,0 +1,258 @@
++/*
++ *   SPDX-FileCopyrightText: 2026 Discover DNF backend authors
++ *
++ *   SPDX-License-Identifier: GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
++ */
++
++#include "DnfResource.h"
++
++#include "appstream/AppStreamUtils.h"
++
++#include <AppStreamQt/developer.h>
++#include <AppStreamQt/icon.h>
++#include <AppStreamQt/launchable.h>
++#include <AppStreamQt/release.h>
++
++#include <QIcon>
++#include <QJsonObject>
++#include <QProcess>
++
++DnfResource::DnfResource(const DnfPackageInfo &pkg, const AppStream::Component &component, AbstractResource::Type type, AbstractResourcesBackend *parent)
++    : AbstractResource(parent)
++    , m_pkg(pkg)
++    , m_component(component)
++    , m_type(type)
++{
++    if (pkg.upgradeable) {
++        m_state = AbstractResource::Upgradeable;
++    } else if (pkg.installed) {
++        m_state = AbstractResource::Installed;
++    } else {
++        m_state = AbstractResource::None;
++    }
++}
++
++bool DnfResource::hasAppStreamData() const
++{
++    return !m_component.id().isEmpty();
++}
++
++QString DnfResource::packageName() const
++{
++    return m_pkg.name;
++}
++
++QString DnfResource::name() const
++{
++    if (hasAppStreamData() && !m_component.name().isEmpty()) {
++        return m_component.name();
++    }
++    return m_pkg.name;
++}
++
++QString DnfResource::comment()
++{
++    if (hasAppStreamData() && !m_component.summary().isEmpty()) {
++        return m_component.summary();
++    }
++    return m_pkg.summary;
++}
++
++QVariant DnfResource::icon() const
++{
++    if (hasAppStreamData()) {
++        const auto icons = m_component.icons();
++        if (!icons.isEmpty()) {
++            const AppStream::Icon &appIcon = icons.first();
++            if (appIcon.kind() == AppStream::Icon::KindStock) {
++                return appIcon.name();
++            }
++            QIcon ico;
++            if (appIcon.kind() == AppStream::Icon::KindLocal || appIcon.kind() == AppStream::Icon::KindCached) {
++                ico.addFile(appIcon.url().toLocalFile(), appIcon.size());
++                if (!ico.isNull()) {
++                    return QVariant::fromValue(ico);
++                }
++            }
++        }
++    }
++    return QStringLiteral("package-x-generic");
++}
++
++bool DnfResource::canExecute() const
++{
++    if (m_type != AbstractResource::Application || m_state < AbstractResource::Installed) {
++        return false;
++    }
++    return !m_component.launchable(AppStream::Launchable::KindDesktopId).entries().isEmpty();
++}
++
++void DnfResource::invokeApplication() const
++{
++    const auto entries = m_component.launchable(AppStream::Launchable::KindDesktopId).entries();
++    if (!entries.isEmpty()) {
++        QProcess::startDetached(QStringLiteral("gtk-launch"), {entries.constFirst()});
++    }
++}
++
++AbstractResource::State DnfResource::state()
++{
++    return m_state;
++}
++
++bool DnfResource::hasCategory(const QString &category) const
++{
++    if (hasAppStreamData()) {
++        return m_component.categories().contains(category);
++    }
++    return category == QLatin1String("dnf_packages");
++}
++
++QUrl DnfResource::homepage()
++{
++    if (hasAppStreamData()) {
++        const QUrl u = m_component.url(AppStream::Component::UrlKindHomepage);
++        if (!u.isEmpty()) {
++            return u;
++        }
++    }
++    return QUrl::fromUserInput(m_pkg.url);
++}
++
++AbstractResource::Type DnfResource::type() const
++{
++    return m_type;
++}
++
++quint64 DnfResource::size()
++{
++    return m_pkg.downloadSize ? m_pkg.downloadSize : m_pkg.installSize;
++}
++
++QJsonArray DnfResource::licenses()
++{
++    if (hasAppStreamData()) {
++        return AppStreamUtils::licenses(m_component);
++    }
++    return {QJsonObject{
++        {QStringLiteral("name"), m_pkg.license},
++        {QStringLiteral("url"), QStringLiteral("https://spdx.org/license-list")},
++    }};
++}
++
++QString DnfResource::installedVersion() const
++{
++    return m_pkg.installedVersion;
++}
++
++QString DnfResource::availableVersion() const
++{
++    return m_pkg.availableVersion;
++}
++
++QString DnfResource::longDescription()
++{
++    if (hasAppStreamData() && !m_component.description().isEmpty()) {
++        return m_component.description();
++    }
++    return m_pkg.description;
++}
++
++QString DnfResource::origin() const
++{
++    return m_pkg.repoId;
++}
++
++QString DnfResource::section()
++{
++    return QStringLiteral("dnf");
++}
++
++QString DnfResource::author() const
++{
++    if (hasAppStreamData()) {
++        return m_component.developer().name();
++    }
++    return {};
++}
++
++QList<PackageState> DnfResource::addonsInformation()
++{
++    return {};
++}
++
++QString DnfResource::appstreamId() const
++{
++    return m_component.id();
++}
++
++QUrl DnfResource::url() const
++{
++    if (hasAppStreamData()) {
++        return QUrl(QStringLiteral("appstream://") + m_component.id());
++    }
++    return QUrl(QStringLiteral("dnf://") + m_pkg.name);
++}
++
++QString DnfResource::sourceIcon() const
++{
++    return QStringLiteral("folder-rpm");
++}
++
++QDate DnfResource::releaseDate() const
++{
++    if (hasAppStreamData()) {
++        const auto releases = m_component.releasesPlain().entries();
++        if (!releases.isEmpty()) {
++            return releases.constFirst().timestamp().date();
++        }
++    }
++    return {};
++}
++
++void DnfResource::fetchChangelog()
++{
++    if (hasAppStreamData()) {
++        Q_EMIT changelogFetched(AppStreamUtils::changelogToHtml(m_component));
++    } else {
++        Q_EMIT changelogFetched({});
++    }
++}
++
++void DnfResource::fetchScreenshots()
++{
++    if (hasAppStreamData()) {
++        Q_EMIT screenshotsFetched(AppStreamUtils::fetchScreenshots(m_component));
++    } else {
++        Q_EMIT screenshotsFetched({});
++    }
++}
++
++void DnfResource::setPackageInfo(const DnfPackageInfo &pkg)
++{
++    m_pkg = pkg;
++    if (pkg.upgradeable) {
++        setState(AbstractResource::Upgradeable);
++    } else if (pkg.installed) {
++        setState(AbstractResource::Installed);
++    } else {
++        setState(AbstractResource::None);
++    }
++    Q_EMIT versionsChanged();
++    Q_EMIT sizeChanged();
++}
++
++void DnfResource::setAppStreamData(const AppStream::Component &component)
++{
++    m_component = component;
++    Q_EMIT longDescriptionChanged();
++    Q_EMIT iconChanged();
++}
++
++void DnfResource::setState(State state)
++{
++    if (m_state != state) {
++        m_state = state;
++        Q_EMIT stateChanged();
++    }
++}
+diff --git a/libdiscover/backends/DnfBackend/DnfResource.h b/libdiscover/backends/DnfBackend/DnfResource.h
+new file mode 100644
+index 0000000..5508d61
+--- /dev/null
++++ b/libdiscover/backends/DnfBackend/DnfResource.h
+@@ -0,0 +1,61 @@
++/*
++ *   SPDX-FileCopyrightText: 2026 Discover DNF backend authors
++ *
++ *   SPDX-License-Identifier: GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
++ */
++
++#pragma once
++
++#include "DnfContext.h"
++
++#include <AppStreamQt/component.h>
++#include <resources/AbstractResource.h>
++
++class DnfResource : public AbstractResource
++{
++    Q_OBJECT
++public:
++    explicit DnfResource(const DnfPackageInfo &pkg, const AppStream::Component &component, AbstractResource::Type type, AbstractResourcesBackend *parent);
++
++    QString packageName() const override;
++    QString name() const override;
++    QString comment() override;
++    QVariant icon() const override;
++    bool canExecute() const override;
++    void invokeApplication() const override;
++    State state() override;
++    bool hasCategory(const QString &category) const override;
++    QUrl homepage() override;
++    Type type() const override;
++    quint64 size() override;
++    QJsonArray licenses() override;
++    QString installedVersion() const override;
++    QString availableVersion() const override;
++    QString longDescription() override;
++    QString origin() const override;
++    QString section() override;
++    QString author() const override;
++    QList<PackageState> addonsInformation() override;
++    QString appstreamId() const override;
++    QUrl url() const override;
++    QString sourceIcon() const override;
++    QDate releaseDate() const override;
++    void fetchChangelog() override;
++    void fetchScreenshots() override;
++
++    void setPackageInfo(const DnfPackageInfo &pkg);
++    void setAppStreamData(const AppStream::Component &component);
++    void setState(State state);
++    const DnfPackageInfo &packageInfo() const
++    {
++        return m_pkg;
++    }
++
++private:
++    bool hasAppStreamData() const;
++
++    DnfPackageInfo m_pkg;
++    AppStream::Component m_component;
++    AbstractResource::Type m_type;
++    AbstractResource::State m_state = AbstractResource::None;
++};
+diff --git a/libdiscover/backends/DnfBackend/DnfSourcesBackend.cpp b/libdiscover/backends/DnfBackend/DnfSourcesBackend.cpp
+new file mode 100644
+index 0000000..fcb0628
+--- /dev/null
++++ b/libdiscover/backends/DnfBackend/DnfSourcesBackend.cpp
+@@ -0,0 +1,85 @@
++/*
++ *   SPDX-FileCopyrightText: 2026 Discover DNF backend authors
++ *
++ *   SPDX-License-Identifier: GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
++ */
++
++#include "DnfSourcesBackend.h"
++#include "DnfBackend.h"
++#include "dnf_backend_logging.h"
++
++#include <KLocalizedString>
++
++DnfSourcesBackend::DnfSourcesBackend(DnfBackend *parent)
++    : AbstractSourcesBackend(parent)
++    , m_backend(parent)
++    , m_sourcesModel(new QStandardItemModel(this))
++{
++    loadSources();
++    connect(m_sourcesModel, &QStandardItemModel::itemChanged, this, [this](QStandardItem *item) {
++        onItemChanged(item);
++    });
++}
++
++QString DnfSourcesBackend::idDescription()
++{
++    return i18n("Repository id");
++}
++
++bool DnfSourcesBackend::addSource(const QString &)
++{
++    return false;
++}
++
++bool DnfSourcesBackend::removeSource(const QString &)
++{
++    return false;
++}
++
++QAbstractItemModel *DnfSourcesBackend::sources()
++{
++    return m_sourcesModel;
++}
++
++QVariantList DnfSourcesBackend::actions() const
++{
++    return {};
++}
++
++bool DnfSourcesBackend::supportsAdding() const
++{
++    return false;
++}
++
++void DnfSourcesBackend::loadSources()
++{
++    m_sourcesModel->clear();
++    if (!m_backend->context() || !m_backend->context()->isLoaded()) {
++        return;
++    }
++    const auto repos = m_backend->context()->repositories();
++    for (const DnfRepoInfo &repo : repos) {
++        if (repo.id == QLatin1String("@System") || repo.id.startsWith(QLatin1Char('@'))) {
++            continue;
++        }
++        auto *item = new QStandardItem(repo.name.isEmpty() ? repo.id : repo.name);
++        item->setData(repo.id, AbstractSourcesBackend::IdRole);
++        item->setData(repo.baseurl, Qt::ToolTipRole);
++        item->setCheckable(true);
++        item->setCheckState(repo.enabled ? Qt::Checked : Qt::Unchecked);
++        m_sourcesModel->appendRow(item);
++    }
++}
++
++void DnfSourcesBackend::onItemChanged(QStandardItem *item)
++{
++    if (!item) {
++        return;
++    }
++    const QString id = item->data(AbstractSourcesBackend::IdRole).toString();
++    const bool enabled = item->checkState() == Qt::Checked;
++    QString error;
++    if (!m_backend->context()->setRepositoryEnabled(id, enabled, &error)) {
++        qCWarning(LOG_DNF) << "Failed to toggle repo" << id << error;
++    }
++}
+diff --git a/libdiscover/backends/DnfBackend/DnfSourcesBackend.h b/libdiscover/backends/DnfBackend/DnfSourcesBackend.h
+new file mode 100644
+index 0000000..22bcc6a
+--- /dev/null
++++ b/libdiscover/backends/DnfBackend/DnfSourcesBackend.h
+@@ -0,0 +1,35 @@
++/*
++ *   SPDX-FileCopyrightText: 2026 Discover DNF backend authors
++ *
++ *   SPDX-License-Identifier: GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
++ */
++
++#pragma once
++
++#include <QStandardItemModel>
++#include <resources/AbstractSourcesBackend.h>
++
++class DnfBackend;
++
++class DnfSourcesBackend : public AbstractSourcesBackend
++{
++    Q_OBJECT
++public:
++    explicit DnfSourcesBackend(DnfBackend *parent);
++
++    QString idDescription() override;
++    bool addSource(const QString &id) override;
++    bool removeSource(const QString &id) override;
++    QAbstractItemModel *sources() override;
++    QVariantList actions() const override;
++    bool supportsAdding() const override;
++
++public Q_SLOTS:
++    void loadSources();
++
++private:
++    void onItemChanged(QStandardItem *item);
++
++    DnfBackend *m_backend = nullptr;
++    QStandardItemModel *m_sourcesModel = nullptr;
++};
+diff --git a/libdiscover/backends/DnfBackend/DnfTransaction.cpp b/libdiscover/backends/DnfBackend/DnfTransaction.cpp
+new file mode 100644
+index 0000000..fb27ea6
+--- /dev/null
++++ b/libdiscover/backends/DnfBackend/DnfTransaction.cpp
+@@ -0,0 +1,116 @@
++/*
++ *   SPDX-FileCopyrightText: 2026 Discover DNF backend authors
++ *
++ *   SPDX-License-Identifier: GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
++ */
++
++#include "DnfTransaction.h"
++#include "DnfBackend.h"
++#include "DnfResource.h"
++#include "dnf_backend_logging.h"
++
++#include <KAuth/Action>
++#include <KAuth/ExecuteJob>
++#include <KLocalizedString>
++
++#include <QFutureWatcher>
++#include <QtConcurrentRun>
++#include <unistd.h>
++
++DnfTransaction::DnfTransaction(DnfResource *resource, Role role)
++    : Transaction(resource->backend(), resource, role)
++    , m_resource(resource)
++    , m_backend(static_cast<DnfBackend *>(resource->backend()))
++{
++    setCancellable(false);
++    setStatus(QueuedStatus);
++    startTransaction();
++}
++
++void DnfTransaction::cancel()
++{
++    setStatus(CancelledStatus);
++}
++
++void DnfTransaction::proceed()
++{
++    startTransaction();
++}
++
++void DnfTransaction::finishOk()
++{
++    setProgress(100);
++    setStatus(DoneStatus);
++    m_backend->markTransactionFinished(m_resource, role(), true);
++}
++
++void DnfTransaction::finishError(const QString &message)
++{
++    qCWarning(LOG_DNF) << "Transaction failed:" << message;
++    Q_EMIT passiveMessage(message);
++    setStatus(DoneWithErrorStatus);
++    m_backend->markTransactionFinished(m_resource, role(), false);
++}
++
++void DnfTransaction::startTransaction()
++{
++    const QString action = (role() == InstallRole) ? QStringLiteral("install") : QStringLiteral("remove");
++    const QStringList packages{m_resource->packageName()};
++
++    setProgress(5);
++    setStatus(role() == InstallRole ? DownloadingStatus : CommittingStatus);
++
++    // If running as root (e.g. automated CLI tests), call libdnf5 directly.
++    if (geteuid() == 0) {
++        auto future = QtConcurrent::run([backend = m_backend, action, packages]() {
++            QString error;
++            const bool ok = backend->context()->runTransaction(action, packages, &error);
++            return QPair<bool, QString>(ok, error);
++        });
++        auto *watcher = new QFutureWatcher<QPair<bool, QString>>(this);
++        connect(watcher, &QFutureWatcher<QPair<bool, QString>>::finished, this, [this, watcher]() {
++            const auto result = watcher->result();
++            if (result.first) {
++                finishOk();
++            } else {
++                finishError(result.second.isEmpty() ? i18n("DNF transaction failed") : result.second);
++            }
++            watcher->deleteLater();
++        });
++        watcher->setFuture(future);
++        return;
++    }
++
++    // Non-root: elevate via KAuth helper
++    KAuth::Action kaction(QStringLiteral("org.kde.discover.dnfbackend.pkgmgmt"));
++    kaction.setHelperId(QStringLiteral("org.kde.discover.dnfbackend"));
++    if (!kaction.isValid()) {
++        finishError(i18n("DNF authorization action is invalid"));
++        return;
++    }
++    kaction.setTimeout(60 * 60 * 1000);
++    kaction.addArgument(QStringLiteral("pkgAction"), action);
++    kaction.addArgument(QStringLiteral("packages"), packages);
++
++    KAuth::ExecuteJob *job = kaction.execute();
++    connect(job, &KAuth::ExecuteJob::percentChanged, this, [this](KJob *, unsigned long percent) {
++        if (percent >= 40 && role() == InstallRole) {
++            setStatus(CommittingStatus);
++        }
++        setProgress(static_cast<int>(percent));
++    });
++    connect(job, &KAuth::ExecuteJob::result, this, [this](KJob *job) {
++        auto *reply = static_cast<KAuth::ExecuteJob *>(job);
++        if (reply->error() == 0) {
++            finishOk();
++        } else {
++            const QVariantMap data = reply->data();
++            QString message = data.value(QStringLiteral("errorString"), reply->errorString()).toString();
++            if (reply->error() == KAuth::ActionReply::AuthorizationDeniedError) {
++                message = i18n("Error: Authorization denied");
++            }
++            finishError(message);
++        }
++    });
++    job->start();
++}
+diff --git a/libdiscover/backends/DnfBackend/DnfTransaction.h b/libdiscover/backends/DnfBackend/DnfTransaction.h
+new file mode 100644
+index 0000000..c96901b
+--- /dev/null
++++ b/libdiscover/backends/DnfBackend/DnfTransaction.h
+@@ -0,0 +1,30 @@
++/*
++ *   SPDX-FileCopyrightText: 2026 Discover DNF backend authors
++ *
++ *   SPDX-License-Identifier: GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
++ */
++
++#pragma once
++
++#include <Transaction/Transaction.h>
++
++class DnfResource;
++class DnfBackend;
++
++class DnfTransaction : public Transaction
++{
++    Q_OBJECT
++public:
++    explicit DnfTransaction(DnfResource *resource, Role role);
++
++    void cancel() override;
++    void proceed() override;
++
++private:
++    void startTransaction();
++    void finishOk();
++    void finishError(const QString &message);
++
++    DnfResource *m_resource = nullptr;
++    DnfBackend *m_backend = nullptr;
++};
+diff --git a/libdiscover/backends/DnfBackend/dnf-backend-categories.xml b/libdiscover/backends/DnfBackend/dnf-backend-categories.xml
+new file mode 100644
+index 0000000..76647ea
+--- /dev/null
++++ b/libdiscover/backends/DnfBackend/dnf-backend-categories.xml
+@@ -0,0 +1,632 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<Menu>
++
++  <Menu>
++    <Name>All Applications</Name>
++    <Icon>applications-all</Icon>
++    <Top />
++    <Include>
++      <Or>
++        <!--All of them-->
++        <Category>Accessibility</Category>
++        <Category>AudioVideo</Category>
++        <Category>Development</Category>
++        <Category>Education</Category>
++        <Category>Engineering</Category>
++        <Category>Game</Category>
++        <Category>Graphics</Category>
++        <Category>Network</Category>
++        <Category>Office</Category>
++        <Category>Science</Category>
++        <Category>Settings</Category>
++        <Category>System</Category>
++        <Category>Utility</Category>
++      </Or>
++    </Include>
++  </Menu>
++
++  <Menu>
++    <Name>Utilities</Name>
++    <Icon>applications-utilities</Icon>
++    <Include>
++      <And>
++        <Category>Utility</Category>
++        <Not><Category>Accessibility</Category></Not>
++      </And>
++    </Include>
++  </Menu>
++
++  <Menu>
++    <Name>Accessibility</Name>
++    <Icon>preferences-desktop-accessibility</Icon>
++    <Include>
++      <And>
++        <Category>Accessibility</Category>
++        <Not><Category>Settings</Category></Not>
++      </And>
++    </Include>
++  </Menu>
++
++  <Menu>
++    <Name>Development</Name>
++    <Icon>applications-development</Icon>
++    <Include>
++      <Or>
++        <Category>Development</Category>
++      </Or>
++    </Include>
++
++    <Menu>
++      <Name>Debugging</Name>
++      <Icon>tools-report-bug</Icon>
++      <Include>
++        <And>
++          <Category>Debugger</Category>
++        </And>
++      </Include>
++    </Menu>
++
++    <Menu>
++      <Name>Graphic Interface Design</Name>
++      <Icon>interface</Icon>
++      <Include>
++        <And>
++          <Category>GUIDesigner</Category>
++        </And>
++      </Include>
++    </Menu>
++
++    <Menu>
++      <Name>IDEs</Name>
++      <Include>
++        <And>
++          <Category>IDE</Category>
++        </And>
++      </Include>
++    </Menu>
++
++    <Menu>
++      <Name>Localization</Name>
++      <Icon>preferences-desktop-locale</Icon>
++      <Include>
++        <And>
++          <Category>Translation</Category>
++        </And>
++      </Include>
++    </Menu>
++
++    <Menu>
++      <Name>Profiling</Name>
++      <Include>
++        <Or>
++          <Category>Profiling</Category>
++        </Or>
++      </Include>
++    </Menu>
++
++    <Menu>
++      <Name>Web Development</Name>
++      <Include>
++        <And>
++          <Category>WebDevelopment</Category>
++        </And>
++      </Include>
++      <Icon>applications-internet</Icon>
++    </Menu>
++
++  </Menu>
++
++  <Menu>
++    <Name>Education</Name>
++    <Icon>applications-education</Icon>
++    <Include>
++      <And>
++        <Category>Education</Category>
++      </And>
++    </Include>
++  </Menu>
++
++  <Menu>
++    <Name>Science &amp; Math</Name>
++    <Icon>applications-science</Icon>
++    <Include>
++      <Or>
++        <Category>Science</Category>
++        <Category>Engineering</Category>
++      </Or>
++    </Include>
++    <Menu>
++      <Name>Astronomy</Name>
++      <Icon>kstars_stars</Icon>
++      <Include>
++        <And>
++          <Category>Astronomy</Category>
++        </And>
++      </Include>
++    </Menu>
++    <Menu>
++      <Name>Biology</Name>
++      <Include>
++        <And>
++          <Category>Biology</Category>
++        </And>
++      </Include>
++    </Menu>
++    <Menu>
++      <Name>Chemistry</Name>
++      <Icon>applications-science</Icon>
++      <Include>
++        <And>
++          <Category>Chemistry</Category>
++        </And>
++      </Include>
++    </Menu>
++    <Menu>
++      <Name>Computer Science and Robotics</Name>
++      <Icon>computer</Icon>
++      <Include>
++        <Or>
++          <Category>ArtificialIntelligence</Category>
++          <Category>ComputerScience</Category>
++          <Category>Robotics</Category>
++        </Or>
++      </Include>
++    </Menu>
++    <Menu>
++      <Name>Electronics</Name>
++      <Icon>audio-card</Icon>
++      <Include>
++        <And>
++          <Category>Electronics</Category>
++        </And>
++      </Include>
++    </Menu>
++    <Menu>
++      <Name>Engineering</Name>
++      <Icon>applications-engineering</Icon>
++      <Include>
++        <And>
++          <Category>Engineering</Category>
++        </And>
++      </Include>
++    </Menu>
++    <Menu>
++      <Name>Geography</Name>
++      <Icon>globe</Icon>
++      <Include>
++        <And>
++          <Category>Geography</Category>
++        </And>
++      </Include>
++    </Menu>
++    <Menu>
++      <Name>Geology</Name>
++      <Include>
++        <Or>
++          <Category>Geology</Category>
++          <Category>Geoscience</Category>
++        </Or>
++      </Include>
++    </Menu>
++    <Menu>
++      <Name>Mathematics</Name>
++      <Icon>applications-education-mathematics</Icon>
++      <Include>
++        <Or>
++          <Category>DataVisualization</Category>
++          <Category>Math</Category>
++          <Category>NumericalAnalysis</Category>
++        </Or>
++      </Include>
++    </Menu>
++    <Menu>
++      <Name>Physics</Name>
++      <Icon>applications-education-science</Icon>
++      <Include>
++        <And>
++          <Category>Physics</Category>
++        </And>
++      </Include>
++    </Menu>
++  </Menu>
++
++  <Menu>
++    <Name>Games</Name>
++    <Icon>applications-games</Icon>
++    <Include>
++      <And>
++        <Category>Game</Category>
++      </And>
++    </Include>
++
++    <Menu>
++      <Name>Arcade</Name>
++      <Icon>applications-games-arcade</Icon>
++      <Include>
++        <And>
++          <Category>ArcadeGame</Category>
++        </And>
++      </Include>
++    </Menu>
++    <Menu>
++      <Name>Board Games</Name>
++      <Icon>applications-games-board</Icon>
++      <Include>
++        <And>
++          <Category>BoardGame</Category>
++        </And>
++      </Include>
++    </Menu>
++    <Menu>
++      <Name>Card Games</Name>
++      <Icon>applications-games-card</Icon>
++      <Include>
++        <And>
++          <Category>CardGame</Category>
++        </And>
++      </Include>
++    </Menu>
++    <Menu>
++      <Name>Puzzles</Name>
++      <Icon>applications-games</Icon>
++      <Include>
++        <And>
++          <Category>LogicGame</Category>
++        </And>
++      </Include>
++    </Menu>
++    <Menu>
++      <Name>Role Playing</Name>
++      <Icon>applications-games</Icon>
++      <Include>
++        <And>
++          <Category>RolePlaying</Category>
++        </And>
++      </Include>
++    </Menu>
++    <Menu>
++      <Name>Simulation</Name>
++      <Icon>applications-games-strategy</Icon>
++      <Include>
++        <And>
++          <Category>Simulation</Category>
++        </And>
++      </Include>
++    </Menu>
++    <Menu>
++      <Name>Strategy</Name>
++      <Icon>applications-games-strategy</Icon>
++      <Include>
++        <And>
++          <Category>StrategyGame</Category>
++        </And>
++      </Include>
++    </Menu>
++    <Menu>
++      <Name>Sports</Name>
++      <Icon>applications-games</Icon>
++      <Include>
++        <And>
++          <Category>SportsGame</Category>
++        </And>
++      </Include>
++    </Menu>
++    <Menu>
++      <Name>Action</Name>
++      <Icon>applications-games</Icon>
++      <Include>
++        <And>
++          <Category>ActionGame</Category>
++        </And>
++      </Include>
++    </Menu>
++    <Menu>
++      <Name>Emulators</Name>
++      <Icon>applications-games</Icon>
++      <Include>
++        <And>
++          <Category>Emulator</Category>
++        </And>
++      </Include>
++    </Menu>
++    <Menu>
++      <Name>Launchers</Name>
++      <Icon>applications-games</Icon>
++      <Include>
++        <And>
++          <Category>LauncherStore</Category>
++        </And>
++      </Include>
++    </Menu>
++    <Menu>
++      <Name>Tools</Name>
++      <Icon>applications-games</Icon>
++      <Include>
++        <And>
++          <Category>GameTool</Category>
++        </And>
++      </Include>
++    </Menu>
++
++  </Menu>
++
++
++  <Menu>
++    <Name>Graphics</Name>
++    <Icon>applications-graphics</Icon>
++    <Include>
++      <And>
++        <Category>Graphics</Category>
++      </And>
++    </Include>
++    <Menu>
++      <Name>3D</Name>
++      <Icon>draw-cuboid</Icon>
++      <Include>
++        <And>
++          <Category>3DGraphics</Category>
++        </And>
++      </Include>
++    </Menu>
++    <Menu>
++      <Name>Drawing</Name>
++      <Icon>draw-freehand</Icon>
++      <Include>
++        <And>
++          <Category>VectorGraphics</Category>
++          <Not>
++            <Category>Viewer</Category>
++          </Not>
++        </And>
++      </Include>
++    </Menu>
++    <Menu>
++      <Name>Painting and Editing</Name>
++      <Icon>draw-brush</Icon>
++      <Include>
++        <And>
++          <Category>RasterGraphics</Category>
++          <Not>
++              <Category>Viewer</Category>
++              <Category>Scanning</Category>
++          </Not>
++        </And>
++      </Include>
++    </Menu>
++    <Menu>
++      <Name>Photography</Name>
++      <Icon>camera-photo</Icon>
++      <Include>
++        <And>
++          <Category>Photography</Category>
++        </And>
++      </Include>
++    </Menu>
++    <Menu>
++      <Name>Publishing</Name>
++      <Icon>document-export</Icon>
++      <Include>
++        <And>
++          <Category>Publishing</Category>
++        </And>
++      </Include>
++    </Menu>
++    <Menu>
++      <Name>Scanning and OCR</Name>
++      <Icon>preferences-devices-scanner</Icon>
++      <Include>
++        <Or>
++          <Category>Scanning</Category>
++          <Category>OCR</Category>
++        </Or>
++      </Include>
++    </Menu>
++    <Menu>
++      <Name>Viewers</Name>
++      <Icon>graphics-viewer-document</Icon>
++      <Include>
++        <And>
++          <Category>Viewer</Category>
++        </And>
++      </Include>
++    </Menu>
++  </Menu>
++
++
++  <Menu>
++    <Name>Internet</Name>
++    <Icon>applications-internet</Icon>
++    <Include>
++      <And>
++        <Category>Network</Category>
++      </And>
++    </Include>
++    <Menu>
++      <Name>Chat</Name>
++      <Icon>kopete</Icon>
++      <Include>
++        <Or>
++          <Category>InstantMessaging</Category>
++          <Category>IRCClient</Category>
++        </Or>
++      </Include>
++    </Menu>
++    <Menu>
++      <Name>File Sharing</Name>
++      <Icon>document-share</Icon>
++      <Include>
++        <And>
++          <Category>FileTransfer</Category>
++        </And>
++      </Include>
++    </Menu>
++    <Menu>
++      <Name>Mail</Name>
++      <Icon>internet-mail</Icon>
++      <Include>
++        <And>
++          <Category>Email</Category>
++        </And>
++      </Include>
++    </Menu>
++    <Menu>
++      <Name>Web Browsers</Name>
++      <Icon>internet-web-browser</Icon>
++      <Include>
++        <And>
++          <Category>WebBrowser</Category>
++        </And>
++      </Include>
++    </Menu>
++  </Menu>
++
++
++  <Menu>
++    <Name>Multimedia</Name>
++    <Icon>applications-multimedia</Icon>
++    <Include>
++      <And>
++        <Category>AudioVideo</Category>
++      </And>
++    </Include>
++
++    <Menu>
++      <Name>Audio and Video Editors</Name>
++      <Icon>edit-cut</Icon>
++      <Include>
++        <And>
++          <Category>AudioVideoEditing</Category>
++        </And>
++      </Include>
++    </Menu>
++    <Menu>
++      <Name>Audio Players</Name>
++      <Icon>audio-headphones</Icon>
++      <Include>
++        <And>
++          <Or>
++            <Category>AudioVideo</Category>
++            <Category>Audio</Category>
++          </Or>
++          <Not>
++            <Category>Video</Category>
++            <Category>AudioVideoEditing</Category>
++            <Category>DiscBurning</Category>
++            <Category>Music</Category>
++            <Category>Sequencer</Category>
++            <Category>Mixer</Category>
++            <Category>Utility</Category>
++          </Not>
++        </And>
++      </Include>
++    </Menu>
++    <Menu>
++      <Name>Video Players</Name>
++      <Icon>applications-multimedia</Icon>
++      <Include>
++        <And>
++          <Or>
++            <Category>AudioVideo</Category>
++            <Category>Video</Category>
++          </Or>
++          <Not>
++            <Category>Audio</Category>
++            <Category>AudioVideoEditing</Category>
++            <Category>DiscBurning</Category>
++            <Category>Utility</Category>
++          </Not>
++        </And>
++      </Include>
++    </Menu>
++    <Menu>
++      <Name>CD and DVD</Name>
++      <Icon>media-optical</Icon>
++      <Include>
++        <And>
++          <Category>DiscBurning</Category>
++        </And>
++      </Include>
++    </Menu>
++  </Menu>
++
++
++  <Menu>
++    <Name>Office</Name>
++    <Icon>applications-office</Icon>
++    <Include>
++      <And>
++        <Category>Office</Category>
++      </And>
++    </Include>
++  </Menu>
++
++  <Menu>
++    <Name>System</Name>
++    <Icon>applications-system</Icon>
++    <Include>
++      <Or>
++        <Category>Settings</Category>
++        <Category>System</Category>
++      </Or>
++    </Include>
++  </Menu>
++
++  <Menu>
++    <Name>Fonts</Name>
++    <Icon>font</Icon>
++    <Fonts />
++    <Include>
++      <And>
++        <Category>Fonts</Category>
++      </And>
++    </Include>
++  </Menu>
++
++  <Menu>
++    <Name>Hardware Drivers</Name>
++    <Icon>computer-laptop</Icon>
++    <Drivers />
++    <Include>
++      <And>
++        <Category>Drivers</Category>
++      </And>
++    </Include>
++  </Menu>
++
++  <Menu>
++    <Name>Plasma Addons</Name>
++    <Icon>plasma</Icon>
++    <Addons />
++    <OnlyShowIn>KDE</OnlyShowIn>
++
++    <Include>
++        <Or>
++            <AppstreamIdWildcard>org.kde.plasma.*</AppstreamIdWildcard>
++        </Or>
++    </Include>
++
++    <Menu>
++      <Name>Plasma Widgets</Name>
++      <Icon>plasma</Icon>
++      <Addons />
++      <Include>
++        <Or>
++            <AppstreamIdWildcard>org.kde.plasma.*</AppstreamIdWildcard>
++        </Or>
++      </Include>
++    </Menu>
++
++<!--
++    <Menu>
++      <Name>Fonts</Name>
++      <Icon>preferences-desktop-font</Icon>
++      <Include>
++        <And>
++            <Category>Fonts</Category>
++        </And>
++      </Include>
++    </Menu>
++-->
++  </Menu>
++
++</Menu>
+diff --git a/libdiscover/backends/DnfBackend/org.kde.discover.dnfbackend.actions b/libdiscover/backends/DnfBackend/org.kde.discover.dnfbackend.actions
+new file mode 100644
+index 0000000..1b9faa2
+--- /dev/null
++++ b/libdiscover/backends/DnfBackend/org.kde.discover.dnfbackend.actions
+@@ -0,0 +1,5 @@
++[org.kde.discover.dnfbackend.pkgmgmt]
++Name=DNF package management
++Description=Install, remove or upgrade packages with DNF
++Policy=yes
++Persistence=session

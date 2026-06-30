@@ -1,0 +1,66 @@
+diff -up discover-6.7.1/libdiscover/backends/DnfBackend/DnfBackend.cpp.8~ discover-6.7.1/libdiscover/backends/DnfBackend/DnfBackend.cpp
+--- discover-6.7.1/libdiscover/backends/DnfBackend/DnfBackend.cpp.8~	2026-06-30 02:38:05.438356513 +0200
++++ discover-6.7.1/libdiscover/backends/DnfBackend/DnfBackend.cpp	2026-06-30 02:40:17.941090878 +0200
+@@ -15,12 +15,50 @@
+ #include "resources/StandardBackendUpdater.h"
+ 
+ #include <AppStreamQt/pool.h>
++#include <AppStreamQt/launchable.h>
+ #include <KLocalizedString>
+ 
+ #include <QFutureWatcher>
+ #include <QTimer>
+ #include <QtConcurrentRun>
+ 
++/// True for components that should appear as installable applications in Discover
++/// (not KDE Okular-style file generators or other plugin shells that reuse the
++/// parent app's display name and flood categories like "Viewers").
++static bool isBrowsableApplicationComponent(const AppStream::Component &component)
++{
++    switch (component.kind()) {
++    case AppStream::Component::KindDesktopApp:
++    case AppStream::Component::KindConsoleApp:
++    case AppStream::Component::KindWebApp:
++        break;
++    default:
++        return false;
++    }
++
++    const QString id = component.id();
++    // Calligra generators for Okular: okularApplication_doc_calligra, etc.
++    if (id.startsWith(QLatin1String("okularApplication_")) || id.startsWith(QLatin1String("okular_"))) {
++        return false;
++    }
++
++    const auto launchables = component.launchable(AppStream::Launchable::KindDesktopId).entries();
++    for (const QString &desktopId : launchables) {
++        if (desktopId.startsWith(QLatin1String("okularApplication_"))) {
++            return false;
++        }
++        // KPart / generator style desktop ids: fooApplication_bar
++        if (desktopId.contains(QLatin1String("Application_"))) {
++            return false;
++        }
++    }
++    if (id.contains(QLatin1String("Application_"))) {
++        return false;
++    }
++
++    return true;
++}
++
+ DISCOVER_BACKEND_PLUGIN(DnfBackend)
+ 
+ DnfBackend::DnfBackend(QObject *parent)
+@@ -73,8 +111,11 @@ DnfBackend::LoadResult DnfBackend::loadI
+     } else {
+         result.components = pool.components();
+         for (const AppStream::Component &component : std::as_const(result.components)) {
++            if (!isBrowsableApplicationComponent(component))
++                continue;
+             const QStringList pkgs = component.packageNames();
+             for (const QString &pkg : pkgs) {
++                // Prefer a "real" app over a later weaker match; first wins.
+                 if (!result.appstreamByPackage.contains(pkg)) {
+                     result.appstreamByPackage.insert(pkg, component);
+                 }

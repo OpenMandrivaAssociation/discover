@@ -1,0 +1,489 @@
+diff --git a/libdiscover/backends/DnfBackend/DnfAuthHelper.cpp b/libdiscover/backends/DnfBackend/DnfAuthHelper.cpp
+index 0c3ebfd..4260e2e 100644
+--- a/libdiscover/backends/DnfBackend/DnfAuthHelper.cpp
++++ b/libdiscover/backends/DnfBackend/DnfAuthHelper.cpp
+@@ -17,12 +17,13 @@ ActionReply DnfAuthHelper::pkgmgmt(const QVariantMap &args)
+     const QString action = args.value(QStringLiteral("pkgAction")).toString();
+     const QStringList packages = args.value(QStringLiteral("packages")).toStringList();
+ 
+-    HelperSupport::progressStep(10);
++    HelperSupport::progressStep(5);
+ 
+     DnfContext ctx;
+     QString error;
+ 
+     if (action == QLatin1String("refresh") || action == QLatin1String("update")) {
++        HelperSupport::progressStep(20);
+         if (!ctx.refresh(&error)) {
+             reply = ActionReply::HelperErrorReply();
+             reply.setErrorDescription(error);
+@@ -34,11 +35,11 @@ ActionReply DnfAuthHelper::pkgmgmt(const QVariantMap &args)
+     }
+ 
+     if (action == QLatin1String("install") || action == QLatin1String("remove") || action == QLatin1String("upgrade")) {
+-        HelperSupport::progressStep(20);
++        HelperSupport::progressStep(15);
+         if (!ctx.runTransaction(action, packages, &error)) {
+             reply = ActionReply::HelperErrorReply();
+             reply.setErrorDescription(error);
+-            reply.addData(QStringLiteral("errorString"), error);
++            reply.addData(QStringLiteral("errorString"), error.isEmpty() ? QStringLiteral("DNF transaction failed") : error);
+             return reply;
+         }
+         HelperSupport::progressStep(100);
+diff --git a/libdiscover/backends/DnfBackend/DnfContext.cpp b/libdiscover/backends/DnfBackend/DnfContext.cpp
+index 4b078f9..50ee0fc 100644
+--- a/libdiscover/backends/DnfBackend/DnfContext.cpp
++++ b/libdiscover/backends/DnfBackend/DnfContext.cpp
+@@ -28,18 +28,26 @@ DnfContext::DnfContext() = default;
+ 
+ DnfContext::~DnfContext() = default;
+ 
+-std::unique_ptr<libdnf5::Base> DnfContext::createBase(QString *error) const
++std::unique_ptr<libdnf5::Base> DnfContext::createBase(QString *error, bool writeLock) const
+ {
+     try {
+         auto base = std::make_unique<libdnf5::Base>();
+         base->load_config();
+-        // Avoid loading host plugins that may fail in constrained environments
+-        // but keep normal behavior when plugins work; leave plugins enabled by default.
+         base->setup();
+         auto repo_sack = base->get_repo_sack();
+         repo_sack->create_repos_from_system_configuration();
+-        // Read lock is enough for queries; transactions take write lock separately.
+-        base->lock_system_repo(libdnf5::utils::LockAccess::READ, libdnf5::utils::LockBlocking::BLOCKING);
++
++        const auto access = writeLock ? libdnf5::utils::LockAccess::WRITE : libdnf5::utils::LockAccess::READ;
++        // Prefer non-blocking so we never deadlock against another dnf/discover process.
++        if (!base->lock_system_repo(access, libdnf5::utils::LockBlocking::NON_BLOCKING)) {
++            // Wait briefly for the lock (e.g. another helper finishing).
++            if (!base->lock_system_repo(access, libdnf5::utils::LockBlocking::BLOCKING)) {
++                if (error) {
++                    *error = QStringLiteral("Could not lock the system package database");
++                }
++                return nullptr;
++            }
++        }
+         repo_sack->load_repos();
+         return base;
+     } catch (const std::exception &e) {
+@@ -50,9 +58,9 @@ std::unique_ptr<libdnf5::Base> DnfContext::createBase(QString *error) const
+     }
+ }
+ 
+-bool DnfContext::setupBase(QString *error)
++bool DnfContext::setupBase(QString *error, bool writeLock)
+ {
+-    m_base = createBase(error);
++    m_base = createBase(error, writeLock);
+     m_loaded = static_cast<bool>(m_base);
+     return m_loaded;
+ }
+@@ -60,9 +68,15 @@ bool DnfContext::setupBase(QString *error)
+ bool DnfContext::load(QString *error)
+ {
+     QMutexLocker lock(&m_mutex);
++    if (m_base) {
++        try {
++            m_base->unlock_system_repo();
++        } catch (...) {
++        }
++    }
+     m_base.reset();
+     m_loaded = false;
+-    return setupBase(error);
++    return setupBase(error, /*writeLock=*/false);
+ }
+ 
+ bool DnfContext::refresh(QString *error)
+@@ -71,6 +85,21 @@ bool DnfContext::refresh(QString *error)
+     return load(error);
+ }
+ 
++void DnfContext::releaseSystemLock()
++{
++    QMutexLocker lock(&m_mutex);
++    if (m_base) {
++        try {
++            m_base->unlock_system_repo();
++        } catch (...) {
++        }
++    }
++    // Drop Base entirely so we do not keep any advisory lock open while the
++    // privileged helper runs. Queries resume after the next load()/refresh().
++    m_base.reset();
++    m_loaded = false;
++}
++
+ DnfPackageInfo DnfContext::packageToInfo(const libdnf5::rpm::Package &pkg, bool installed, bool upgradeable) const
+ {
+     DnfPackageInfo info;
+@@ -345,16 +374,14 @@ QVector<DnfRepoInfo> DnfContext::repositories() const
+ 
+ bool DnfContext::runTransaction(const QString &action, const QStringList &packages, QString *error)
+ {
+-    // Transactions need a fresh Base with write lock
++    // Transactions need a fresh Base with write lock. Caller (GUI) must have
++    // released any READ lock via releaseSystemLock() first.
+     std::unique_ptr<libdnf5::Base> base;
+     try {
+-        base = std::make_unique<libdnf5::Base>();
+-        base->load_config();
+-        base->setup();
+-        auto repo_sack = base->get_repo_sack();
+-        repo_sack->create_repos_from_system_configuration();
+-        base->lock_system_repo(libdnf5::utils::LockAccess::WRITE, libdnf5::utils::LockBlocking::BLOCKING);
+-        repo_sack->load_repos();
++        base = createBase(error, /*writeLock=*/true);
++        if (!base) {
++            return false;
++        }
+ 
+         libdnf5::Goal goal(*base);
+         if (action == QLatin1String("install")) {
+@@ -414,7 +441,7 @@ bool DnfContext::runTransaction(const QString &action, const QStringList &packag
+         QMutexLocker lock(&m_mutex);
+         m_base.reset();
+         m_loaded = false;
+-        setupBase(nullptr);
++        setupBase(nullptr, /*writeLock=*/false);
+     }
+     return true;
+ }
+diff --git a/libdiscover/backends/DnfBackend/DnfContext.h b/libdiscover/backends/DnfBackend/DnfContext.h
+index 279f584..0974dd2 100644
+--- a/libdiscover/backends/DnfBackend/DnfContext.h
++++ b/libdiscover/backends/DnfBackend/DnfContext.h
+@@ -12,8 +12,6 @@
+ #include <QVector>
+ #include <memory>
+ #include <optional>
+-#include <string>
+-#include <vector>
+ 
+ #include <libdnf5/base/base.hpp>
+ #include <libdnf5/base/goal.hpp>
+@@ -47,6 +45,9 @@ struct DnfRepoInfo {
+ /**
+  * Thin wrapper around libdnf5::Base providing thread-safe access for the Discover backend.
+  * load_repos() can only be called once per Base instance, so reload() recreates Base.
++ *
++ * Important: the GUI holds at most a READ lock on the system repo. Before a privileged
++ * helper runs a WRITE transaction, call releaseSystemLock() so the helper is not blocked.
+  */
+ class DnfContext
+ {
+@@ -60,6 +61,10 @@ public:
+     /// Refresh metadata then reload. Prefer calling from a worker thread.
+     bool refresh(QString *error = nullptr);
+ 
++    /// Drop the in-process Base (and its system-repo lock) so another process
++    /// (KAuth helper) can acquire a WRITE lock. Call again via load()/refresh() after.
++    void releaseSystemLock();
++
+     QVector<DnfPackageInfo> allLatestPackages() const;
+     QVector<DnfPackageInfo> searchPackages(const QString &term, int limit = 500) const;
+     QVector<DnfPackageInfo> installedPackages() const;
+@@ -82,8 +87,8 @@ public:
+ 
+ private:
+     DnfPackageInfo packageToInfo(const libdnf5::rpm::Package &pkg, bool installed, bool upgradeable) const;
+-    bool setupBase(QString *error);
+-    std::unique_ptr<libdnf5::Base> createBase(QString *error) const;
++    bool setupBase(QString *error, bool writeLock);
++    std::unique_ptr<libdnf5::Base> createBase(QString *error, bool writeLock) const;
+ 
+     mutable QMutex m_mutex;
+     std::unique_ptr<libdnf5::Base> m_base;
+diff --git a/libdiscover/backends/DnfBackend/DnfResource.cpp b/libdiscover/backends/DnfBackend/DnfResource.cpp
+index 9f5d1cb..d3c85ad 100644
+--- a/libdiscover/backends/DnfBackend/DnfResource.cpp
++++ b/libdiscover/backends/DnfBackend/DnfResource.cpp
+@@ -5,6 +5,7 @@
+  */
+ 
+ #include "DnfResource.h"
++#include "LazyIconResolver.h"
+ 
+ #include "appstream/AppStreamUtils.h"
+ 
+@@ -13,7 +14,11 @@
+ #include <AppStreamQt/launchable.h>
+ #include <AppStreamQt/release.h>
+ 
++#include <QDir>
++#include <QDirIterator>
++#include <QFileInfo>
+ #include <QIcon>
++#include <QStandardPaths>
+ #include <QJsonObject>
+ #include <QProcess>
+ 
+@@ -58,24 +63,156 @@ QString DnfResource::comment()
+     return m_pkg.summary;
+ }
+ 
+-QVariant DnfResource::icon() const
++bool DnfResource::hasResolvedIcon() const
++{
++    return m_icon.has_value();
++}
++
++static void addCachedIconFile(QIcon &ico, const QString &pathOrName, const QSize &size)
+ {
++    if (pathOrName.isEmpty()) {
++        return;
++    }
++    if (QFileInfo::exists(pathOrName)) {
++        ico.addFile(pathOrName, size);
++        return;
++    }
++    // AppStream often stores relative names; look up the swcatalog / app-info icon cache.
++    const QStringList roots = {
++        QStringLiteral("/var/cache/swcatalog/icons"),
++        QStringLiteral("/usr/share/swcatalog/icons"),
++        QStringLiteral("/var/lib/swcatalog/icons"),
++        QStringLiteral("/usr/share/app-info/icons"),
++        QStringLiteral("/var/lib/app-info/icons"),
++        QStringLiteral("/var/cache/app-info/icons"),
++    };
++    const QString fileName = QFileInfo(pathOrName).fileName();
++    for (const QString &root : roots) {
++        if (!QFileInfo::exists(root)) {
++            continue;
++        }
++        // Prefer size-specific dirs when we know the size
++        if (size.isValid() && size.width() > 0) {
++            const QString sized = root + QLatin1Char('/') + QString::number(size.width()) + QLatin1Char('x') + QString::number(size.height())
++                + QLatin1Char('/') + fileName;
++            // Also search per-repo subdirs: root/<repo>/<WxH>/file
++            QDirIterator sizedIt(root, QStringList{fileName}, QDir::Files, QDirIterator::Subdirectories);
++            while (sizedIt.hasNext()) {
++                const QString found = sizedIt.next();
++                // Prefer matching size in path
++                if (found.contains(QString::number(size.width()) + QLatin1Char('x') + QString::number(size.height()))) {
++                    ico.addFile(found, size);
++                    return;
++                }
++            }
++            Q_UNUSED(sized)
++        }
++        QDirIterator it(root, QStringList{fileName}, QDir::Files, QDirIterator::Subdirectories);
++        if (it.hasNext()) {
++            ico.addFile(it.next(), size);
++            return;
++        }
++    }
++}
++
++QIcon DnfResource::resolveIconNow() const
++{
++    QIcon ico;
+     if (hasAppStreamData()) {
+         const auto icons = m_component.icons();
+-        if (!icons.isEmpty()) {
+-            const AppStream::Icon &appIcon = icons.first();
+-            if (appIcon.kind() == AppStream::Icon::KindStock) {
+-                return appIcon.name();
++        for (const AppStream::Icon &appIcon : icons) {
++            switch (appIcon.kind()) {
++            case AppStream::Icon::KindStock: {
++                if (AppStreamUtils::kIconLoaderHasIcon(appIcon.name())) {
++                    return QIcon::fromTheme(appIcon.name());
++                }
++                // Fall back to treating the stock name as a possible file/theme later
++                if (!appIcon.name().isEmpty()) {
++                    QIcon themed = QIcon::fromTheme(appIcon.name());
++                    if (!themed.isNull()) {
++                        return themed;
++                    }
++                }
++                break;
++            }
++            case AppStream::Icon::KindLocal:
++            case AppStream::Icon::KindCached: {
++                QString path = appIcon.url().toLocalFile();
++                if (path.isEmpty()) {
++                    path = appIcon.url().path();
++                }
++                if (path.isEmpty()) {
++                    path = appIcon.name();
++                }
++                addCachedIconFile(ico, path, appIcon.size());
++                break;
++            }
++            case AppStream::Icon::KindRemote: {
++                // Only use if already downloaded somewhere sensible
++                const QString path = appIcon.url().toLocalFile();
++                if (!path.isEmpty() && QFileInfo::exists(path)) {
++                    ico.addFile(path, appIcon.size());
++                }
++                break;
++            }
++            case AppStream::Icon::KindUnknown:
++            default:
++                break;
++            }
++        }
++    }
++
++    if (ico.isNull()) {
++        // Many apps install icons named after the package or appstream id
++        for (const QString &candidate : {m_pkg.name, m_component.id(), m_component.id().section(QLatin1Char('.'), -1)}) {
++            if (candidate.isEmpty()) {
++                continue;
+             }
+-            QIcon ico;
+-            if (appIcon.kind() == AppStream::Icon::KindLocal || appIcon.kind() == AppStream::Icon::KindCached) {
+-                ico.addFile(appIcon.url().toLocalFile(), appIcon.size());
+-                if (!ico.isNull()) {
+-                    return QVariant::fromValue(ico);
++            if (AppStreamUtils::kIconLoaderHasIcon(candidate)) {
++                return QIcon::fromTheme(candidate);
++            }
++            QIcon themed = QIcon::fromTheme(candidate);
++            if (!themed.isNull() && !themed.name().isEmpty()) {
++                // fromTheme always returns a non-null QIcon even for missing names on some themes
++            }
++            // Try common hicolor paths
++            const QStringList sizes = {QStringLiteral("128x128"), QStringLiteral("64x64"), QStringLiteral("48x48"), QStringLiteral("32x32"), QStringLiteral("scalable")};
++            for (const QString &sz : sizes) {
++                const QString png = QStringLiteral("/usr/share/icons/hicolor/%1/apps/%2.png").arg(sz, candidate);
++                if (QFileInfo::exists(png)) {
++                    ico.addFile(png);
++                    break;
++                }
++                const QString svg = QStringLiteral("/usr/share/icons/hicolor/%1/apps/%2.svg").arg(sz, candidate);
++                if (QFileInfo::exists(svg)) {
++                    ico.addFile(svg);
++                    break;
+                 }
+             }
++            if (!ico.isNull()) {
++                break;
++            }
+         }
+     }
++
++    if (ico.isNull()) {
++        ico = QIcon::fromTheme(QStringLiteral("package-x-generic"));
++    }
++    return ico;
++}
++
++void DnfResource::resolveIcon()
++{
++    m_icon = resolveIconNow();
++    Q_EMIT iconChanged();
++}
++
++QVariant DnfResource::icon() const
++{
++    if (m_icon.has_value()) {
++        return m_icon.value();
++    }
++    LazyIconResolver::instance()->queue(const_cast<DnfResource *>(this));
+     return QStringLiteral("package-x-generic");
+ }
+ 
+diff --git a/libdiscover/backends/DnfBackend/DnfResource.h b/libdiscover/backends/DnfBackend/DnfResource.h
+index 5508d61..ce69479 100644
+--- a/libdiscover/backends/DnfBackend/DnfResource.h
++++ b/libdiscover/backends/DnfBackend/DnfResource.h
+@@ -11,6 +11,9 @@
+ #include <AppStreamQt/component.h>
+ #include <resources/AbstractResource.h>
+ 
++#include <QIcon>
++#include <optional>
++
+ class DnfResource : public AbstractResource
+ {
+     Q_OBJECT
+@@ -43,6 +46,9 @@ public:
+     void fetchChangelog() override;
+     void fetchScreenshots() override;
+ 
++    [[nodiscard]] bool hasResolvedIcon() const override;
++    void resolveIcon() override;
++
+     void setPackageInfo(const DnfPackageInfo &pkg);
+     void setAppStreamData(const AppStream::Component &component);
+     void setState(State state);
+@@ -53,9 +59,11 @@ public:
+ 
+ private:
+     bool hasAppStreamData() const;
++    QIcon resolveIconNow() const;
+ 
+     DnfPackageInfo m_pkg;
+     AppStream::Component m_component;
+     AbstractResource::Type m_type;
+     AbstractResource::State m_state = AbstractResource::None;
++    mutable std::optional<QIcon> m_icon;
+ };
+diff --git a/libdiscover/backends/DnfBackend/DnfTransaction.cpp b/libdiscover/backends/DnfBackend/DnfTransaction.cpp
+index fb27ea6..1cfda9e 100644
+--- a/libdiscover/backends/DnfBackend/DnfTransaction.cpp
++++ b/libdiscover/backends/DnfBackend/DnfTransaction.cpp
+@@ -47,6 +47,10 @@ void DnfTransaction::finishOk()
+ void DnfTransaction::finishError(const QString &message)
+ {
+     qCWarning(LOG_DNF) << "Transaction failed:" << message;
++    // Reload read-only context even on failure so the UI can query again.
++    if (m_backend->context() && !m_backend->context()->isLoaded()) {
++        m_backend->context()->load(nullptr);
++    }
+     Q_EMIT passiveMessage(message);
+     setStatus(DoneWithErrorStatus);
+     m_backend->markTransactionFinished(m_resource, role(), false);
+@@ -60,6 +64,13 @@ void DnfTransaction::startTransaction()
+     setProgress(5);
+     setStatus(role() == InstallRole ? DownloadingStatus : CommittingStatus);
+ 
++    // Release the GUI process READ lock so a WRITE lock can be taken (in-process
++    // as root, or in the KAuth helper). Holding READ here previously deadlocked
++    // the helper forever with progress stuck at ~10%.
++    if (m_backend->context()) {
++        m_backend->context()->releaseSystemLock();
++    }
++
+     // If running as root (e.g. automated CLI tests), call libdnf5 directly.
+     if (geteuid() == 0) {
+         auto future = QtConcurrent::run([backend = m_backend, action, packages]() {
+@@ -81,13 +92,15 @@ void DnfTransaction::startTransaction()
+         return;
+     }
+ 
+-    // Non-root: elevate via KAuth helper
++    // Non-root: elevate via KAuth helper (polkit; allow_active=yes needs no password on active seats)
+     KAuth::Action kaction(QStringLiteral("org.kde.discover.dnfbackend.pkgmgmt"));
+     kaction.setHelperId(QStringLiteral("org.kde.discover.dnfbackend"));
+     if (!kaction.isValid()) {
+-        finishError(i18n("DNF authorization action is invalid"));
++        finishError(i18n("DNF authorization action is invalid — is the backend installed?"));
+         return;
+     }
++    static const KAuth::Action::DetailsMap details{{KAuth::Action::AuthDetail::DetailMessage, i18n("Install or remove packages with DNF")}};
++    kaction.setDetailsV2(details);
+     kaction.setTimeout(60 * 60 * 1000);
+     kaction.addArgument(QStringLiteral("pkgAction"), action);
+     kaction.addArgument(QStringLiteral("packages"), packages);
+@@ -97,7 +110,7 @@ void DnfTransaction::startTransaction()
+         if (percent >= 40 && role() == InstallRole) {
+             setStatus(CommittingStatus);
+         }
+-        setProgress(static_cast<int>(percent));
++        setProgress(qMax(10, static_cast<int>(percent)));
+     });
+     connect(job, &KAuth::ExecuteJob::result, this, [this](KJob *job) {
+         auto *reply = static_cast<KAuth::ExecuteJob *>(job);
+@@ -108,6 +121,8 @@ void DnfTransaction::startTransaction()
+             QString message = data.value(QStringLiteral("errorString"), reply->errorString()).toString();
+             if (reply->error() == KAuth::ActionReply::AuthorizationDeniedError) {
+                 message = i18n("Error: Authorization denied");
++            } else if (message.isEmpty()) {
++                message = i18n("DNF transaction failed (error %1)", reply->error());
+             }
+             finishError(message);
+         }

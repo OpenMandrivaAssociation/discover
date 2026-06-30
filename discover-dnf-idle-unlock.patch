@@ -1,0 +1,45 @@
+diff -up discover-6.7.1/libdiscover/backends/DnfBackend/DnfContext.cpp.9~ discover-6.7.1/libdiscover/backends/DnfBackend/DnfContext.cpp
+--- discover-6.7.1/libdiscover/backends/DnfBackend/DnfContext.cpp.9~	2026-06-30 02:42:43.049978489 +0200
++++ discover-6.7.1/libdiscover/backends/DnfBackend/DnfContext.cpp	2026-06-30 02:46:16.275570562 +0200
+@@ -57,6 +57,12 @@ std::unique_ptr<libdnf5::Base> DnfContex
+             }
+         }
+         repo_sack->load_repos();
++	// Do not keep a READ lock while idle: that blocks `dnf` / other tools from
++        // taking WRITE on the system RPM DB. In-memory queries still work after unlock.
++        // WRITE locks are held only for the duration of runTransaction()'s local Base.
++        if (!writeLock) {
++            base->unlock_system_repo();
++        }
+         return base;
+     } catch (const std::exception &e) {
+         if (error) {
+@@ -102,10 +108,9 @@ void DnfContext::releaseSystemLock()
+         } catch (...) {
+         }
+     }
+-    // Drop Base entirely so we do not keep any advisory lock open while the
+-    // privileged helper runs. Queries resume after the next load()/refresh().
+-    m_base.reset();
+-    m_loaded = false;
++    // Prefer unlock-only so the UI can keep using the in-memory sack while a
++    // privileged helper runs with its own WRITE-locked Base. (createBase for
++    // read already unlocks after load_repos; this is belt-and-suspenders.)
+ }
+ 
+ DnfPackageInfo DnfContext::packageToInfo(const libdnf5::rpm::Package &pkg, bool installed, bool upgradeable) const
+diff -up discover-6.7.1/libdiscover/backends/DnfBackend/DnfContext.h.9~ discover-6.7.1/libdiscover/backends/DnfBackend/DnfContext.h
+--- discover-6.7.1/libdiscover/backends/DnfBackend/DnfContext.h.9~	2026-06-30 02:42:43.040212683 +0200
++++ discover-6.7.1/libdiscover/backends/DnfBackend/DnfContext.h	2026-06-30 02:42:43.080431963 +0200
+@@ -62,8 +62,9 @@ public:
+     /// Refresh metadata then reload. Prefer calling from a worker thread.
+     bool refresh(QString *error = nullptr);
+ 
+-    /// Drop the in-process Base (and its system-repo lock) so another process
+-    /// (KAuth helper) can acquire a WRITE lock. Call again via load()/refresh() after.
++    /// Ensure the in-process Base is not holding the system-repo lock, so
++    /// another process (KAuth helper or CLI `dnf`) can acquire WRITE.
++    /// Read-only Base instances unlock after load; this is an explicit release.
+     void releaseSystemLock();
+ 
+     QVector<DnfPackageInfo> allLatestPackages() const;

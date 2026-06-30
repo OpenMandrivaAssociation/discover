@@ -3,10 +3,12 @@
 %define gitbranch Plasma/6.0
 %define gitbranchd %(echo %{gitbranch} |sed -e "s,/,-,g")
 
+%bcond_with packagekit
+
 Summary:	Plasma 6 package manager
 Name:		discover
 Version:	6.7.1
-Release:	%{?git:0.%{git}.}1
+Release:	%{?git:0.%{git}.}2
 License:	GPLv2+
 Group:		Graphical desktop/KDE
 Url:		https://www.kde.org/
@@ -16,13 +18,24 @@ Source0:	https://invent.kde.org/plasma/discover/-/archive/%{gitbranch}/discover-
 Source0:	http://download.kde.org/%{stable}/plasma/%(echo %{version} |cut -d. -f1-3)/discover-%{version}.tar.xz
 %endif
 Source1:	discoverrc
+%if %{with packagekit}
 Source2:	discover-upgrade
 Source10:	discover-wrapper.in
+%endif
 Patch0:		discover-5.17.5-default-sort-by-name.patch
 Patch1:		discover-dont-switch-branches.patch
+%if %{with packagekit}
 # (tpg) always force refresh, periodic refresh set to 12h instead of 24h
 Patch2:		https://src.fedoraproject.org/rpms/plasma-discover/raw/rawhide/f/discover-5.21.4-pk_refresh_force.patch
 Patch3:		discover-6.3.3-upgrading-with-packagekit-is-dangerous.patch
+%endif
+Patch4:		discover-dnf-backend.patch
+Patch5:		discover-fix-dnf-backend.patch
+Patch6:		discover-dnf-progressbar.patch
+Patch7:		discover-dnf-distrosync.patch
+Patch8:		discover-dnf-icons.patch
+Patch9:		discover-dnf-dedupe.patch
+Patch10:	discover-dnf-idle-unlock.patch
 BuildRequires:	cmake(ECM)
 BuildRequires:	cmake(AppStreamQt) >= 1.0.3
 BuildRequires:	cmake(Qt6)
@@ -41,7 +54,11 @@ BuildRequires:	cmake(Qt6WebView)
 BuildRequires:	cmake(QCoro6)
 BuildRequires:	cmake(Qca-qt6)
 #BuildRequires:	pkgconfig(QtOAuth)
+%if %{with packagekit}
 BuildRequires:	cmake(packagekitqt6)
+%else
+BuildRequires:	pkgconfig(libdnf5)
+%endif
 BuildRequires:	cmake(KF6WidgetsAddons)
 BuildRequires:	cmake(KF6CoreAddons)
 BuildRequires:	cmake(KF6Crash)
@@ -83,17 +100,23 @@ BuildRequires:	pkgconfig(libmarkdown)
 BuildRequires:	pkgconfig(fwupd)
 Recommends:	%{name}-backend-fwupd
 %endif
-Requires:	%{name}-backend-kns
+Requires:	%{name}-backend-dnf = %{EVRD}
+Requires:	%{name}-backend-kns = %{EVRD}
+Recommends:	%{name}-backend-flatpak = %{EVRD}
+%if %{with packagekit}
 Recommends:	%{name}-backend-packagekit
-Recommends:	%{name}-backend-flatpak
 # For the wrapper script
 Requires:	plasma6-kdialog
 Requires:	qt6-qttools-dbus
+%endif
 BuildSystem:	cmake
 BuildOption:	-DBUILD_QCH:BOOL=ON
 BuildOption:	-DKDE_INSTALL_USE_QT_SYS_PATHS:BOOL=ON
 BuildOption:	-DCMAKE_SKIP_RPATH:BOOL=OFF
 BuildOption:	-DCMAKE_SKIP_INSTALL_RPATH:BOOL=OFF
+%if ! %{with packagekit}
+BuildOption:	-DBUILD_PackageKitBackend:BOOL=OFF
+%endif
 # Renamed after 6.0 2025-05-01
 %rename plasma6-discover
 
@@ -107,7 +130,9 @@ Plasma 6 package manager.
 %{_datadir}/applications/*.desktop
 %{_sysconfdir}/xdg/discoverrc
 %{_bindir}/plasma-discover
+%if %{with packagekit}
 %{_bindir}/plasma-discover-main
+%endif
 %{_libdir}/plasma-discover/libDiscoverCommon.so
 %{_libdir}/plasma-discover/libDiscoverNotifiers.so
 %{_iconsdir}/hicolor/*/apps/plasmadiscover.*
@@ -143,12 +168,35 @@ Requires:	packagekit
 %description backend-packagekit
 PackageKit backend for %{name}.
 
+%if %{with packagekit}
 %files backend-packagekit
 %{_qtdir}/plugins/discover/packagekit-backend.so
 %{_qtdir}/plugins/discover-notifier/DiscoverPackageKitNotifier.so
 %{_datadir}/libdiscover/categories/packagekit-backend-categories.xml
 %{_datadir}/metainfo/org.kde.discover.packagekit.appdata.xml
 %{_libexecdir}/discover-upgrade
+%endif
+
+#----------------------------------------------------------------------------
+
+%package backend-dnf
+Summary:	DNF backend for %{name}
+Group:		Graphical desktop/KDE
+%if ! %{with packagekit}
+Obsoletes:	%{name}-backend-packagekit < %{EVRD}
+%endif
+
+%description backend-dnf
+DNF backend for %{name}.
+
+%files backend-dnf
+%{_bindir}/plasma-discover-cli
+%{_libdir}/libexec/kf6/kauth/dnf_kauth_helper
+%{_libdir}/qt6/plugins/discover/dnf-backend.so
+%{_datadir}/dbus-1/system-services/org.kde.discover.dnfbackend.service
+%{_datadir}/dbus-1/system.d/org.kde.discover.dnfbackend.conf
+%{_datadir}/libdiscover/categories/dnf-backend-categories.xml
+%{_datadir}/polkit-1/actions/org.kde.discover.dnfbackend.policy
 
 #----------------------------------------------------------------------------
 
@@ -204,15 +252,19 @@ Requires:	%{name} = %{EVRD}
 
 #----------------------------------------------------------------------------
 
+%if %{with packagekit}
 %prep -a
 # This sed statement supplements the upgrading-with-packagekit-is-dangerous patch
 sed -i -e 's,@LIBEXECDIR@,%{_libexecdir},g' libdiscover/backends/PackageKitBackend/PackageKitUpdater.cpp
+%endif
 
 %install -a
 install -m 644 -p -D %{SOURCE1} %{buildroot}%{_sysconfdir}/xdg/discoverrc
+%if %{with packagekit}
 mv %{buildroot}%{_bindir}/plasma-discover %{buildroot}%{_bindir}/plasma-discover-main
 sed -e 's,@QTDIR@,%{_qtdir},g' %{S:10} >%{buildroot}%{_bindir}/plasma-discover
 chmod 0755 %{buildroot}%{_bindir}/plasma-discover
 
 mkdir -p %{buildroot}%{_libexecdir}
 install -c -m 755 %{S:2} %{buildroot}%{_libexecdir}/
+%endif

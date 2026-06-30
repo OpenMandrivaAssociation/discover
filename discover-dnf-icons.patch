@@ -1,0 +1,80 @@
+diff --git a/libdiscover/backends/DnfBackend/DnfResource.cpp b/libdiscover/backends/DnfBackend/DnfResource.cpp
+--- a/libdiscover/backends/DnfBackend/DnfResource.cpp
++++ b/libdiscover/backends/DnfBackend/DnfResource.cpp
+@@ -118,23 +118,14 @@ static void addCachedIconFile(QIcon &ico, const QString &pathOrName, const QSize
+ QIcon DnfResource::resolveIconNow() const
+ {
+     QIcon ico;
++    QString stockFallback;
+     if (hasAppStreamData()) {
+         const auto icons = m_component.icons();
++        // Pass 1: cached/local files first. Stock must not run before this:
++        // QIcon::fromTheme() is non-null even when the theme has no such icon,
++        // which used to hide valid PNGs under /var/cache/swcatalog/icons.
+         for (const AppStream::Icon &appIcon : icons) {
+             switch (appIcon.kind()) {
+-            case AppStream::Icon::KindStock: {
+-                if (AppStreamUtils::kIconLoaderHasIcon(appIcon.name())) {
+-                    return QIcon::fromTheme(appIcon.name());
+-                }
+-                // Fall back to treating the stock name as a possible file/theme later
+-                if (!appIcon.name().isEmpty()) {
+-                    QIcon themed = QIcon::fromTheme(appIcon.name());
+-                    if (!themed.isNull()) {
+-                        return themed;
+-                    }
+-                }
+-                break;
+-            }
+             case AppStream::Icon::KindLocal:
+             case AppStream::Icon::KindCached: {
+                 QString path = appIcon.url().toLocalFile();
+@@ -147,6 +138,11 @@
+                 addCachedIconFile(ico, path, appIcon.size());
+                 break;
+             }
++            case AppStream::Icon::KindStock:
++                if (!appIcon.name().isEmpty()) {
++                    stockFallback = appIcon.name();
++                }
++                break;
+             case AppStream::Icon::KindRemote: {
+                 // Only use if already downloaded somewhere sensible
+                 const QString path = appIcon.url().toLocalFile();
+@@ -160,21 +156,31 @@
+                 break;
+             }
+         }
++        // Pass 2: stock only when the icon theme actually provides it
++        if (ico.isNull() && !stockFallback.isEmpty() && AppStreamUtils::kIconLoaderHasIcon(stockFallback)) {
++            return QIcon::fromTheme(stockFallback);
++        }
+     }
+ 
+     if (ico.isNull()) {
+         // Many apps install icons named after the package or appstream id
+-        for (const QString &candidate : {m_pkg.name, m_component.id(), m_component.id().section(QLatin1Char('.'), -1)}) {
++        const QStringList candidates{m_pkg.name, m_component.id(), m_component.id().section(QLatin1Char('.'), -1), stockFallback};
++        for (const QString &candidate : candidates) {
+             if (candidate.isEmpty()) {
+                 continue;
+             }
++            // Prefer catalog cache by filename (works for uninstalled apps)
++            addCachedIconFile(ico, candidate + QStringLiteral(".png"), QSize());
++            if (!ico.isNull()) {
++                break;
++            }
++            addCachedIconFile(ico, candidate, QSize());
++            if (!ico.isNull()) {
++                break;
++            }
+             if (AppStreamUtils::kIconLoaderHasIcon(candidate)) {
+                 return QIcon::fromTheme(candidate);
+             }
+-            QIcon themed = QIcon::fromTheme(candidate);
+-            if (!themed.isNull() && !themed.name().isEmpty()) {
+-                // fromTheme always returns a non-null QIcon even for missing names on some themes
+-            }
+             // Try common hicolor paths
+             const QStringList sizes = {QStringLiteral("128x128"), QStringLiteral("64x64"), QStringLiteral("48x48"), QStringLiteral("32x32"), QStringLiteral("scalable")};
+             for (const QString &sz : sizes) {

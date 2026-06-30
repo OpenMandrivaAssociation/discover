@@ -1,0 +1,77 @@
+diff --git a/libdiscover/backends/DnfBackend/CMakeLists.txt b/libdiscover/backends/DnfBackend/CMakeLists.txt
+--- a/libdiscover/backends/DnfBackend/CMakeLists.txt
++++ b/libdiscover/backends/DnfBackend/CMakeLists.txt
+@@ -1,6 +1,14 @@
+ find_package(KF6Auth CONFIG REQUIRED)
+ 
+ pkg_check_modules(LibDnf5 REQUIRED IMPORTED_TARGET libdnf5)
++
++# When ON (default), system updates use libdnf5 distro-sync (like `dnf distro-sync`)
++# rather than upgrade (like `dnf update`). Distro-sync can also downgrade packages
++# to match the repositories. Disable with -DDISCOVER_DNF_DISTRO_SYNC=OFF for upgrade-only.
++option(DISCOVER_DNF_DISTRO_SYNC "Use dnf distro-sync for updates instead of upgrade" ON)
++if (DISCOVER_DNF_DISTRO_SYNC)
++    add_definitions(-DDISCOVER_DNF_USE_DISTRO_SYNC=1)
++endif()
+ 
+ set(dnfbackend_SRCS
+     DnfBackend.cpp
+diff --git a/libdiscover/backends/DnfBackend/DnfContext.cpp b/libdiscover/backends/DnfBackend/DnfContext.cpp
+--- a/libdiscover/backends/DnfBackend/DnfContext.cpp
++++ b/libdiscover/backends/DnfBackend/DnfContext.cpp
+@@ -1,6 +1,11 @@
+ /*
+  *   SPDX-FileCopyrightText: 2026 Discover DNF backend authors
+  *
++ *   Update behaviour is controlled by DISCOVER_DNF_USE_DISTRO_SYNC
++ *   (CMake option DISCOVER_DNF_DISTRO_SYNC, default ON):
++ *     ON  -> add_rpm_distro_sync()  (equivalent to `dnf distro-sync`)
++ *     OFF -> add_upgrade()         (equivalent to `dnf update`)
++ *
+  *   SPDX-License-Identifier: GPL-2.0-only OR GPL-3.0-only OR LicenseRef-KDE-Accepted-GPL
+  */
+ 
+@@ -393,10 +398,20 @@ bool DnfContext::runTransaction(const QString &action, const QStringList &packag
+             }
+         } else if (action == QLatin1String("upgrade")) {
+             if (packages.isEmpty()) {
++#ifdef DISCOVER_DNF_USE_DISTRO_SYNC
++                // Synchronize all installed packages to versions in enabled repos
++                // (may upgrade or downgrade), equivalent to `dnf distro-sync`.
++                goal.add_rpm_distro_sync();
++#else
+                 goal.add_upgrade("*");
++#endif
+             } else {
+                 for (const QString &pkg : packages) {
++#ifdef DISCOVER_DNF_USE_DISTRO_SYNC
++                    goal.add_rpm_distro_sync(pkg.toStdString());
++#else
+                     goal.add_upgrade(pkg.toStdString());
++#endif
+                 }
+             }
+         } else {
+diff --git a/libdiscover/backends/DnfBackend/DnfTransaction.cpp b/libdiscover/backends/DnfBackend/DnfTransaction.cpp
+--- a/libdiscover/backends/DnfBackend/DnfTransaction.cpp
++++ b/libdiscover/backends/DnfBackend/DnfTransaction.cpp
+@@ -54,9 +54,19 @@ void DnfTransaction::finishError(const QString &message)
+ 
+ void DnfTransaction::startTransaction()
+ {
+-    const QString action = (role() == InstallRole) ? QStringLiteral("install") : QStringLiteral("remove");
++    // Updates from the Updates page use InstallRole on Upgradeable resources.
++    // Those must use upgrade/distro-sync rather than a plain install so versions
++    // follow repository policy (especially with DISCOVER_DNF_USE_DISTRO_SYNC).
++    QString action;
++    if (role() == RemoveRole) {
++        action = QStringLiteral("remove");
++    } else if (m_resource && m_resource->state() == AbstractResource::Upgradeable) {
++        action = QStringLiteral("upgrade");
++    } else {
++        action = QStringLiteral("install");
++    }
+     const QStringList packages{m_resource->packageName()};
+ 
+     setProgress(5);
+     setStatus(role() == InstallRole ? DownloadingStatus : CommittingStatus);

@@ -1,0 +1,378 @@
+diff --git a/libdiscover/backends/DnfBackend/DnfAuthHelper.cpp b/libdiscover/backends/DnfBackend/DnfAuthHelper.cpp
+index 4260e2e..d8188aa 100644
+--- a/libdiscover/backends/DnfBackend/DnfAuthHelper.cpp
++++ b/libdiscover/backends/DnfBackend/DnfAuthHelper.cpp
+@@ -10,6 +10,7 @@
+ #include <KAuth/HelperSupport>
+ 
+ #include <QVariant>
++#include <algorithm>
+ 
+ ActionReply DnfAuthHelper::pkgmgmt(const QVariantMap &args)
+ {
+@@ -17,7 +18,11 @@ ActionReply DnfAuthHelper::pkgmgmt(const QVariantMap &args)
+     const QString action = args.value(QStringLiteral("pkgAction")).toString();
+     const QStringList packages = args.value(QStringLiteral("packages")).toStringList();
+ 
+-    HelperSupport::progressStep(5);
++    auto reportProgress = [](int percent) {
++        HelperSupport::progressStep(std::clamp(percent, 0, 100));
++    };
++
++    HelperSupport::progressStep(3);
+ 
+     DnfContext ctx;
+     QString error;
+@@ -35,8 +40,7 @@ ActionReply DnfAuthHelper::pkgmgmt(const QVariantMap &args)
+     }
+ 
+     if (action == QLatin1String("install") || action == QLatin1String("remove") || action == QLatin1String("upgrade")) {
+-        HelperSupport::progressStep(15);
+-        if (!ctx.runTransaction(action, packages, &error)) {
++        if (!ctx.runTransaction(action, packages, &error, reportProgress)) {
+             reply = ActionReply::HelperErrorReply();
+             reply.setErrorDescription(error);
+             reply.addData(QStringLiteral("errorString"), error.isEmpty() ? QStringLiteral("DNF transaction failed") : error);
+diff --git a/libdiscover/backends/DnfBackend/DnfContext.cpp b/libdiscover/backends/DnfBackend/DnfContext.cpp
+index 50ee0fc..368f8ce 100644
+--- a/libdiscover/backends/DnfBackend/DnfContext.cpp
++++ b/libdiscover/backends/DnfBackend/DnfContext.cpp
+@@ -12,8 +12,11 @@
+ #include <libdnf5/common/sack/query_cmp.hpp>
+ #include <libdnf5/conf/option.hpp>
+ #include <libdnf5/repo/config_repo.hpp>
++#include <libdnf5/repo/download_callbacks.hpp>
++#include <libdnf5/rpm/transaction_callbacks.hpp>
+ #include <libdnf5/utils/locker.hpp>
+ 
++#include <algorithm>
+ #include <map>
+ #include <set>
+ 
+@@ -372,16 +375,212 @@ QVector<DnfRepoInfo> DnfContext::repositories() const
+     return result;
+ }
+ 
+-bool DnfContext::runTransaction(const QString &action, const QStringList &packages, QString *error)
++namespace
++{
++
++class ProgressReporter
++{
++public:
++    explicit ProgressReporter(DnfContext::ProgressCallback cb)
++        : m_cb(std::move(cb))
++    {
++    }
++
++    void set(int percent)
++    {
++        percent = std::clamp(percent, 0, 100);
++        if (!m_cb || percent <= m_last) {
++            return;
++        }
++        m_last = percent;
++        m_cb(percent);
++    }
++
++    void setAtLeast(int percent)
++    {
++        if (percent > m_last) {
++            set(percent);
++        }
++    }
++
++private:
++    DnfContext::ProgressCallback m_cb;
++    int m_last = -1;
++};
++
++struct DownloadSlot {
++    double total = 0;
++    double done = 0;
++};
++
++class ProgressDownloadCallbacks : public libdnf5::repo::DownloadCallbacks
++{
++public:
++    explicit ProgressDownloadCallbacks(ProgressReporter &reporter)
++        : m_reporter(reporter)
++    {
++    }
++
++    void *add_new_download(void * /*user_data*/, const char * /*description*/, double total_to_download) override
++    {
++        auto *slot = new DownloadSlot;
++        slot->total = total_to_download > 0 ? total_to_download : 0;
++        m_slots.insert(slot);
++        updateProgress();
++        return slot;
++    }
++
++    int progress(void *user_cb_data, double total_to_download, double downloaded) override
++    {
++        auto *slot = static_cast<DownloadSlot *>(user_cb_data);
++        if (slot) {
++            if (total_to_download > 0) {
++                slot->total = total_to_download;
++            }
++            slot->done = downloaded;
++            updateProgress();
++        }
++        return ReturnCode::OK;
++    }
++
++    int end(void *user_cb_data, TransferStatus /*status*/, const char * /*msg*/) override
++    {
++        auto *slot = static_cast<DownloadSlot *>(user_cb_data);
++        if (slot) {
++            if (slot->total > 0) {
++                slot->done = slot->total;
++            } else if (slot->done <= 0) {
++                slot->done = 1;
++                slot->total = 1;
++            }
++            updateProgress();
++            m_slots.erase(slot);
++            delete slot;
++        }
++        return ReturnCode::OK;
++    }
++
++private:
++    void updateProgress()
++    {
++        double total = 0;
++        double done = 0;
++        for (DownloadSlot *slot : m_slots) {
++            if (slot->total > 0) {
++                total += slot->total;
++                done += std::min(slot->done, slot->total);
++            }
++        }
++        // Map download phase into 10–70%
++        int pct = 10;
++        if (total > 0) {
++            pct = 10 + static_cast<int>((done / total) * 60.0);
++        } else if (!m_slots.empty()) {
++            pct = 15;
++        }
++        m_reporter.setAtLeast(std::min(pct, 70));
++    }
++
++    ProgressReporter &m_reporter;
++    std::set<DownloadSlot *> m_slots;
++};
++
++class ProgressTransactionCallbacks : public libdnf5::rpm::TransactionCallbacks
++{
++public:
++    explicit ProgressTransactionCallbacks(ProgressReporter &reporter)
++        : m_reporter(reporter)
++    {
++    }
++
++    void before_begin(uint64_t total) override
++    {
++        m_items = total > 0 ? total : 1;
++        m_reporter.setAtLeast(70);
++    }
++
++    void transaction_progress(uint64_t amount, uint64_t total) override
++    {
++        if (total > 0) {
++            // Preparation: 70–75%
++            m_reporter.setAtLeast(70 + static_cast<int>((double(amount) / double(total)) * 5.0));
++        }
++    }
++
++    void install_start(const libdnf5::base::TransactionPackage & /*item*/, uint64_t /*total*/) override
++    {
++        ++m_started;
++        updateItemProgress(0, 1);
++    }
++
++    void install_progress(const libdnf5::base::TransactionPackage & /*item*/, uint64_t amount, uint64_t total) override
++    {
++        updateItemProgress(amount, total);
++    }
++
++    void install_stop(const libdnf5::base::TransactionPackage & /*item*/, uint64_t /*amount*/, uint64_t /*total*/) override
++    {
++        ++m_finished;
++        updateItemProgress(1, 1);
++    }
++
++    void uninstall_start(const libdnf5::base::TransactionPackage & /*item*/, uint64_t /*total*/) override
++    {
++        ++m_started;
++        updateItemProgress(0, 1);
++    }
++
++    void uninstall_progress(const libdnf5::base::TransactionPackage & /*item*/, uint64_t amount, uint64_t total) override
++    {
++        updateItemProgress(amount, total);
++    }
++
++    void uninstall_stop(const libdnf5::base::TransactionPackage & /*item*/, uint64_t /*amount*/, uint64_t /*total*/) override
++    {
++        ++m_finished;
++        updateItemProgress(1, 1);
++    }
++
++    void after_complete(bool /*success*/) override
++    {
++        m_reporter.setAtLeast(99);
++    }
++
++private:
++    void updateItemProgress(uint64_t amount, uint64_t total)
++    {
++        // Commit phase: 75–99%
++        const double itemBase = m_items > 0 ? (double(m_finished) / double(m_items)) : 0.0;
++        double within = 0.0;
++        if (total > 0) {
++            within = (1.0 / double(m_items > 0 ? m_items : 1)) * (double(amount) / double(total));
++        }
++        const int pct = 75 + static_cast<int>((itemBase + within) * 24.0);
++        m_reporter.setAtLeast(std::min(pct, 99));
++    }
++
++    ProgressReporter &m_reporter;
++    uint64_t m_items = 1;
++    uint64_t m_started = 0;
++    uint64_t m_finished = 0;
++};
++
++} // namespace
++
++bool DnfContext::runTransaction(const QString &action, const QStringList &packages, QString *error, ProgressCallback progress)
+ {
+     // Transactions need a fresh Base with write lock. Caller (GUI) must have
+     // released any READ lock via releaseSystemLock() first.
++    ProgressReporter reporter(std::move(progress));
++    reporter.set(5);
++
+     std::unique_ptr<libdnf5::Base> base;
+     try {
+         base = createBase(error, /*writeLock=*/true);
+         if (!base) {
+             return false;
+         }
++        reporter.set(8);
+ 
+         libdnf5::Goal goal(*base);
+         if (action == QLatin1String("install")) {
+@@ -419,8 +618,14 @@ bool DnfContext::runTransaction(const QString &action, const QStringList &packag
+             }
+             return false;
+         }
++        reporter.set(10);
++
++        base->set_download_callbacks(std::make_unique<ProgressDownloadCallbacks>(reporter));
++        transaction.set_callbacks(std::make_unique<ProgressTransactionCallbacks>(reporter));
+ 
+         transaction.download();
++        reporter.setAtLeast(70);
++
+         transaction.set_description("plasma-discover dnf-backend");
+         const auto result = transaction.run();
+         if (result != libdnf5::base::Transaction::TransactionRunResult::SUCCESS) {
+@@ -429,6 +634,7 @@ bool DnfContext::runTransaction(const QString &action, const QStringList &packag
+             }
+             return false;
+         }
++        reporter.set(100);
+     } catch (const std::exception &e) {
+         if (error) {
+             *error = QString::fromUtf8(e.what());
+diff --git a/libdiscover/backends/DnfBackend/DnfContext.h b/libdiscover/backends/DnfBackend/DnfContext.h
+index 0974dd2..ebc0fca 100644
+--- a/libdiscover/backends/DnfBackend/DnfContext.h
++++ b/libdiscover/backends/DnfBackend/DnfContext.h
+@@ -10,6 +10,7 @@
+ #include <QString>
+ #include <QStringList>
+ #include <QVector>
++#include <functional>
+ #include <memory>
+ #include <optional>
+ 
+@@ -73,10 +74,17 @@ public:
+ 
+     QVector<DnfRepoInfo> repositories() const;
+ 
++    /// Progress callback: percent in 0–100. May be called from the transaction thread.
++    using ProgressCallback = std::function<void(int percent)>;
++
+     /// Run install/remove/upgrade using libdnf5. Requires privileges for system changes.
+     /// @param action "install" | "remove" | "upgrade"
+     /// @param packages package names (empty for full upgrade when action is "upgrade")
+-    bool runTransaction(const QString &action, const QStringList &packages, QString *error = nullptr);
++    /// @param progress optional; download maps to ~10–70%, commit to ~70–100%
++    bool runTransaction(const QString &action,
++                        const QStringList &packages,
++                        QString *error = nullptr,
++                        ProgressCallback progress = {});
+ 
+     bool setRepositoryEnabled(const QString &repoId, bool enabled, QString *error = nullptr);
+ 
+diff --git a/libdiscover/backends/DnfBackend/DnfTransaction.cpp b/libdiscover/backends/DnfBackend/DnfTransaction.cpp
+index 1cfda9e..78be7c0 100644
+--- a/libdiscover/backends/DnfBackend/DnfTransaction.cpp
++++ b/libdiscover/backends/DnfBackend/DnfTransaction.cpp
+@@ -73,13 +73,32 @@ void DnfTransaction::startTransaction()
+ 
+     // If running as root (e.g. automated CLI tests), call libdnf5 directly.
+     if (geteuid() == 0) {
+-        auto future = QtConcurrent::run([backend = m_backend, action, packages]() {
++        // Progress from worker thread: marshal to the transaction object via QueuedConnection.
++        auto *progressRelay = new QObject(this);
++        connect(progressRelay, &QObject::destroyed, progressRelay, []() {}); // keep type complete
++        auto future = QtConcurrent::run([backend = m_backend, action, packages, progressRelay]() {
+             QString error;
+-            const bool ok = backend->context()->runTransaction(action, packages, &error);
++            const bool ok = backend->context()->runTransaction(action, packages, &error, [progressRelay](int percent) {
++                QMetaObject::invokeMethod(
++                    progressRelay,
++                    [progressRelay, percent]() {
++                        // Find parent DnfTransaction via progressRelay parent — set below before run.
++                        if (auto *tx = qobject_cast<DnfTransaction *>(progressRelay->parent())) {
++                            if (percent >= 40 && tx->role() == Transaction::InstallRole) {
++                                tx->setStatus(Transaction::CommittingStatus);
++                            } else if (percent < 70 && tx->role() == Transaction::InstallRole) {
++                                tx->setStatus(Transaction::DownloadingStatus);
++                            }
++                            tx->setProgress(percent);
++                        }
++                    },
++                    Qt::QueuedConnection);
++            });
+             return QPair<bool, QString>(ok, error);
+         });
+         auto *watcher = new QFutureWatcher<QPair<bool, QString>>(this);
+-        connect(watcher, &QFutureWatcher<QPair<bool, QString>>::finished, this, [this, watcher]() {
++        connect(watcher, &QFutureWatcher<QPair<bool, QString>>::finished, this, [this, watcher, progressRelay]() {
++            progressRelay->deleteLater();
+             const auto result = watcher->result();
+             if (result.first) {
+                 finishOk();
+@@ -107,10 +126,16 @@ void DnfTransaction::startTransaction()
+ 
+     KAuth::ExecuteJob *job = kaction.execute();
+     connect(job, &KAuth::ExecuteJob::percentChanged, this, [this](KJob *, unsigned long percent) {
+-        if (percent >= 40 && role() == InstallRole) {
++        if (role() == InstallRole) {
++            if (percent >= 70) {
++                setStatus(CommittingStatus);
++            } else if (percent >= 10) {
++                setStatus(DownloadingStatus);
++            }
++        } else if (percent >= 10) {
+             setStatus(CommittingStatus);
+         }
+-        setProgress(qMax(10, static_cast<int>(percent)));
++        setProgress(static_cast<int>(percent));
+     });
+     connect(job, &KAuth::ExecuteJob::result, this, [this](KJob *job) {
+         auto *reply = static_cast<KAuth::ExecuteJob *>(job);
