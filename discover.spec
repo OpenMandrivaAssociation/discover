@@ -8,7 +8,7 @@
 Summary:	Plasma 6 package manager
 Name:		discover
 Version:	6.7.3
-Release:	%{?git:0.%{git}.}2
+Release:	%{?git:0.%{git}.}3
 License:	GPLv2+
 Group:		Graphical desktop/KDE
 Url:		https://www.kde.org/
@@ -102,6 +102,9 @@ Recommends:	%{name}-backend-fwupd
 %endif
 Requires:	%{name}-backend-dnf = %{EVRD}
 Requires:	%{name}-backend-kns = %{EVRD}
+# DiscoverWindow.qml imports QtNetwork; without the QML plugin the window
+# never creates and Discover dies in fwupd-backend teardown (OMV #3498)
+Requires:	qml(QtNetwork)
 Recommends:	%{name}-backend-flatpak = %{EVRD}
 %if %{with packagekit}
 Recommends:	%{name}-backend-packagekit
