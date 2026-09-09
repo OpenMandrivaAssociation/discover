@@ -7,7 +7,7 @@
 
 Summary:	Plasma 6 package manager
 Name:		discover
-Version:	6.7.3
+Version:	6.7.5
 Release:	%{?git:0.%{git}.}3
 License:	GPLv2+
 Group:		Graphical desktop/KDE

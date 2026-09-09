@@ -1,0 +1,60 @@
+Reading /var/tmp/rpm-tmp.aZ5sZY
+Executing(mkbuilddir): /bin/sh -e /var/tmp/rpm-tmp.1Mn0lE
+Creating(rpmbuild.env): /home/bero/abf/discover/BUILD/discover-6.7.1-build/rpmbuild.env
+  RPM_SOURCE_DIR="/home/bero/abf/discover"
+  RPM_BUILD_DIR="/home/bero/abf/discover/BUILD/discover-6.7.1-build"
+  RPM_OPT_FLAGS="-Os -fomit-frame-pointer -g3 -gdwarf-4 -Wstrict-aliasing=2 -pipe -Wformat -Werror=format-security -D_FORTIFY_SOURCE=2 -fstack-protector-all --param=ssp-buffer-size=4 -O3 -m64 -march=znver1 -mtune=znver1 -mmmx -msse -msse2 -mssse3 -msse4a -msse4.1 -msse4.2 -mavx -mavx2 -msha -maes -mclflushopt -mfsgsbase -mrdrnd -mfma -mrdseed -mpopcnt -madx -mbmi -mbmi2 -mfxsr -mxsave -mxsaveopt -mxsavec -mxsaves -mmwaitx -mclzero -mfpmath=sse -flto"
+  RPM_LD_FLAGS="-Os -fomit-frame-pointer -g3 -gdwarf-4 -Wstrict-aliasing=2 -pipe -Wformat -Werror=format-security -D_FORTIFY_SOURCE=2 -fstack-protector-all --param=ssp-buffer-size=4 -O3 -m64 -march=znver1 -mtune=znver1 -mmmx -msse -msse2 -mssse3 -msse4a -msse4.1 -msse4.2 -mavx -mavx2 -msha -maes -mclflushopt -mfsgsbase -mrdrnd -mfma -mrdseed -mpopcnt -madx -mbmi -mbmi2 -mfxsr -mxsave -mxsaveopt -mxsavec -mxsaves -mmwaitx -mclzero -mfpmath=sse -flto -Wl,-O2  -Wl,--no-undefined -flto "
+  RPM_ARCH="x86_64"
+  RPM_OS="linux"
+  RPM_BUILD_NCPUS="32"
+  RPM_SPECPARTS_DIR="/home/bero/abf/discover/BUILD/discover-6.7.1-build/SPECPARTS"
+  export RPM_SOURCE_DIR RPM_BUILD_DIR RPM_OPT_FLAGS RPM_ARCH RPM_OS RPM_BUILD_NCPUS RPM_SPECPARTS_DIR RPM_LD_FLAGS
+  RPM_DOC_DIR="/usr/share/doc"
+  export RPM_DOC_DIR
+  RPM_PACKAGE_NAME="discover"
+  RPM_PACKAGE_VERSION="6.7.1"
+  RPM_PACKAGE_RELEASE="2"
+  export RPM_PACKAGE_NAME RPM_PACKAGE_VERSION RPM_PACKAGE_RELEASE
+  LANG=C.UTF-8
+  export LANG
+  unset CDPATH DISPLAY ||:
+  unset DEBUGINFOD_URLS ||:
+  unset RPM_CONFIG_DIR ||:
+  RPM_BUILD_ROOT="/home/bero/abf/discover/BUILD/discover-6.7.1-build/BUILDROOT"
+  export RPM_BUILD_ROOT
+  
+  PKG_CONFIG_PATH="${PKG_CONFIG_PATH}:/usr/lib64/pkgconfig:/usr/share/pkgconfig"
+  export PKG_CONFIG_PATH
+Executing(%prep): /bin/sh -e /var/tmp/rpm-tmp.eRHht5
++ umask 022
++ cd /home/bero/abf/discover/BUILD/discover-6.7.1-build
++ cd /home/bero/abf/discover/BUILD/discover-6.7.1-build
++ rm -rf discover-6.7.1
++ /usr/bin/rpmuncompress -x -C discover-6.7.1 /home/bero/abf/discover/discover-6.7.1.tar.xz
++ STATUS=0
++ '[' 0 -ne 0 ']'
++ cd discover-6.7.1
++ /usr/bin/chmod -Rf a+rX,u+w,g-w,o-w .
++ /usr/bin/rpmuncompress /home/bero/abf/discover/discover-5.17.5-default-sort-by-name.patch
++ /usr/bin/patch -p1 -s --fuzz=0 --reject-format=unified -b --suffix .1~
++ /usr/bin/rpmuncompress /home/bero/abf/discover/discover-dont-switch-branches.patch
++ /usr/bin/patch -p1 -s --fuzz=0 --reject-format=unified -b --suffix .2~
++ /usr/bin/rpmuncompress /home/bero/abf/discover/discover-dnf-backend.patch
++ /usr/bin/patch -p1 -s --fuzz=0 --reject-format=unified -b --suffix .3~
++ /usr/bin/rpmuncompress /home/bero/abf/discover/discover-fix-dnf-backend.patch
++ /usr/bin/patch -p1 -s --fuzz=0 --reject-format=unified -b --suffix .4~
++ /usr/bin/rpmuncompress /home/bero/abf/discover/discover-dnf-progressbar.patch
++ /usr/bin/patch -p1 -s --fuzz=0 --reject-format=unified -b --suffix .5~
++ /usr/bin/rpmuncompress /home/bero/abf/discover/discover-dnf-distrosync.patch
++ /usr/bin/patch -p1 -s --fuzz=0 --reject-format=unified -b --suffix .6~
++ /usr/bin/rpmuncompress /home/bero/abf/discover/discover-dnf-icons.patch
++ /usr/bin/patch -p1 -s --fuzz=0 --reject-format=unified -b --suffix .7~
++ /usr/bin/rpmuncompress /home/bero/abf/discover/discover-dnf-dedupe.patch
++ /usr/bin/patch -p1 -s --fuzz=0 --reject-format=unified -b --suffix .8~
+/usr/bin/patch: **** malformed patch at line 67:                      result.appstreamByPackage.insert(pkg, component);
+
+error: Bad exit status from /var/tmp/rpm-tmp.eRHht5 (%prep)
+
+RPM build errors:
+    Bad exit status from /var/tmp/rpm-tmp.eRHht5 (%prep)

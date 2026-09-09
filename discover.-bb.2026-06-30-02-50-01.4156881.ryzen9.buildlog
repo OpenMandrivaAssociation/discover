@@ -1,0 +1,3 @@
+Reading /var/tmp/rpm-tmp.r1V5nQ
+error: Failed build dependencies:
+	cmake(libdnf5) is needed by discover-6.7.1-2.znver1

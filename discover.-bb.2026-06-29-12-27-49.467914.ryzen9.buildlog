@@ -1,0 +1,8 @@
+Reading /var/tmp/rpm-tmp.ZUZyFZ
+Executing(mkbuilddir): /bin/sh -e /var/tmp/rpm-tmp.UGkTj0
+error: Bad exit status from /var/tmp/rpm-tmp.UGkTj0 (mkbuilddir)
+error: failed to create package build directory /home/bero/abf/discover/BUILD/discover-6.7.1-build: Bad file descriptor
+
+RPM build errors:
+    Bad exit status from /var/tmp/rpm-tmp.UGkTj0 (mkbuilddir)
+    failed to create package build directory /home/bero/abf/discover/BUILD/discover-6.7.1-build: Bad file descriptor
