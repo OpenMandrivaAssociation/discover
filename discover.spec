@@ -128,6 +128,10 @@ Plasma 6 package manager.
 
 %files -f %{name}.lang
 %{_datadir}/qlogging-categories6/discover.categories
+%{_datadir}/config.kcfg/discoversettings.kcfg
+%{_datadir}/config.kcfg/discoversettings-kcm.kcfg
+%{_datadir}/config.kcfg/discover-updates.kcfg
+%{_datadir}/config.kcfg/discover-appstream-settings.kcfg
 %dir %{_libdir}/plasma-discover
 %{_datadir}/kxmlgui5/plasmadiscover
 %{_datadir}/applications/*.desktop
