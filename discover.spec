@@ -145,6 +145,8 @@ Plasma 6 package manager.
 %{_iconsdir}/hicolor/*/apps/plasmadiscover.*
 %{_datadir}/knotifications6/discoverabstractnotifier.notifyrc
 %{_datadir}/metainfo/org.kde.discover.appdata.xml
+%{_datadir}/metainfo/org.kde.discover.appstreampreview.metainfo.xml
+%{_qtdir}/plugins/discover/appstream-preview-backend.so
 %{_qtdir}/plugins/plasma/kcms/systemsettings/kcm_updates.so
 
 #----------------------------------------------------------------------------
