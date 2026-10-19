@@ -1,20 +1,19 @@
-diff -up discover-6.3.0/libdiscover/appstream/AppStreamIntegration.cpp.2~ discover-6.3.0/libdiscover/appstream/AppStreamIntegration.cpp
---- discover-6.3.0/libdiscover/appstream/AppStreamIntegration.cpp.2~	2025-02-11 21:34:41.498135705 +0100
-+++ discover-6.3.0/libdiscover/appstream/AppStreamIntegration.cpp	2025-02-11 21:44:53.838026929 +0100
-@@ -57,7 +57,11 @@ std::optional<AppStream::Release> AppStr
-     bool allowPreRelease = settings.readEntry<bool>("AllowPreRelease", false);
-     bool allowDevelopmentRelease = settings.readEntry<bool>("AllowDevelopmentRelease", false);
+--- discover-6.3.0/libdiscover/appstream/AppStreamIntegration.cpp
++++ discover-6.3.0/libdiscover/appstream/AppStreamIntegration.cpp
+@@ -57,7 +57,11 @@
+     bool allowPreRelease = settings.allowPreRelease();
+     bool allowDevelopmentRelease = settings.allowDevelopmentRelease();
  
 -    QString currentVersion = osRelease()->versionId();
 +    const QString currentVersion = osRelease()->versionId();
 +    const QString currentVersionString = osRelease()->version();
 +
-+    if(currentVersion == QStringLiteral("cooker") || currentVersion == QStringLiteral("rolling") || currentVersion == QStringLiteral("rock") || currentVersion.endsWith(QStringLiteral(".90")) || currentVersionString.contains(QStringLiteral("Cooker")) || currentVersionString.contains(QStringLiteral("Rolling")) || currentVersionString.contains(QStringLiteral("ROME")) || currentVersionString.contains(QStringLiteral("Rome"))) // Those are current versions no matter what...
++    if (currentVersion == QStringLiteral("cooker") || currentVersion == QStringLiteral("rolling") || currentVersion == QStringLiteral("rock") || currentVersion.endsWith(QStringLiteral(".90")) || currentVersionString.contains(QStringLiteral("Cooker")) || currentVersionString.contains(QStringLiteral("Rolling")) || currentVersionString.contains(QStringLiteral("ROME")) || currentVersionString.contains(QStringLiteral("Rome"))) // Those are current versions no matter what...
 +        return std::nullopt;
  
      // skip if current version is unknown
      if (currentVersion.isEmpty()) {
-@@ -94,6 +98,8 @@ std::optional<AppStream::Release> AppStr
+@@ -94,6 +98,8 @@
  
              // Look at the potentially new version
              const QString newVersion = r.version();
